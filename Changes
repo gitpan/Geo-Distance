@@ -1,5 +1,14 @@
 Revision history for Perl extension Geo::Distance.
 
+0.09  Fri Apr 01 2005
+ - Modified the todo list to include ideas fro future algorithms.
+ - Fixed the nautical mile, mile, yard, and light second units.
+ - Added the British spellings for kilometre, metre, and centimetre.
+ - Added the poppy seed, barleycorn, rod, pole, perch, chain, 
+   furlong, league, fathom, millimeter, and millimetre units.
+ - The totw.pl script was written by Ren and can be used to 
+   take over the world.
+
 0.08  Sun Mar 20 2005
  - Updated the README description.
  - Removed debug print()s.  Eeek!

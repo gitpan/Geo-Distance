@@ -28,6 +28,10 @@ calculations.
 This is the first version of Geo::Distance to be considered to have a stable interface.  
 You can now rely on the interface to be backwards compatible to version 0.07 and newer.
 
+=item *
+
+0.09 Changed the behavior of the reg_unit funtcion.
+
 =cut
 
 #-------------------------------------------------------------------------------
@@ -36,7 +40,7 @@ use strict;
 use warnings;
 use Carp;
 use Math::Trig qw( great_circle_distance deg2rad rad2deg acos pi );
-our $VERSION = '0.08';
+our $VERSION = '0.09';
 use constant KILOMETER_RHO => 6371.64;
 #-------------------------------------------------------------------------------
 
@@ -72,7 +76,10 @@ Returns a blessed Geo::Distance object.  The new constructor accepts one optiona
 argument.
 
   no_unit - Whether or not to load the default units. Defaults to 0 (false).
-            kilometer, meter, centimeter, yard, foot, inch, light_second, mile
+            kilometer, kilometre, meter, metre, centimeter, centimetre, millimeter, 
+            millimetre, yard, foot, inch, light second, mile, nautical mile, 
+            poppy seed, barleycorn, rod, pole, perch, chain, furlong, league, 
+            fathom
 
 =cut
 
@@ -85,15 +92,32 @@ sub new {
 	$self->{formula} = 'hsin';
 	$self->{units} = {};
 	if(!$args{no_units}){
-		$self->reg_unit( 'kilometer', KILOMETER_RHO );
-		$self->reg_unit( 'meter' => 1000 => 'kilometer' );
-		$self->reg_unit( 'centimeter' => 100 => 'meter' );
-		$self->reg_unit( 'yard' => 1.0936 => 'meter' );
-		$self->reg_unit( 'foot' => 3 => 'yard' );
-		$self->reg_unit( 'inch' => 12 => 'foot' );
-		$self->reg_unit( 'light_second' => (1/298000) => 'kilometer' );
-		$self->reg_unit( 'mile' => 0.6214 => 'kilometer' );
-		$self->reg_unit( 'nautical mile' => 1.852 => 'kilometer' );
+		$self->reg_unit( KILOMETER_RHO, 'kilometer' );
+		$self->reg_unit( 1000, 'meter', => 'kilometer' );
+		$self->reg_unit( 100, 'centimeter' => 'meter' );
+		$self->reg_unit( 10, 'millimeter' => 'centimeter' );
+		
+		$self->reg_unit( 'kilometre' => 'kilometer' );
+		$self->reg_unit( 'metre' => 'meter' );
+		$self->reg_unit( 'centimetre' => 'centimeter' );
+		$self->reg_unit( 'millimetre' => 'millimeter' );
+		
+		$self->reg_unit( 'mile' => 1609.344, 'meter' );
+		$self->reg_unit( 'nautical mile' => 1852, 'meter' );
+		$self->reg_unit( 'yard' => 0.9144, 'meter' );
+		$self->reg_unit( 3, 'foot' => 'yard' );
+		$self->reg_unit( 12, 'inch' => 'foot' );
+		$self->reg_unit( 'light second' => 299792458, 'meter' );
+		
+		$self->reg_unit( 'poppy seed' => 2.11, 'millimeter' );
+		$self->reg_unit( 'barleycorn' => 8.467, 'millimeter' );
+		$self->reg_unit( 'rod' => 5.0292, 'meter' );
+		$self->reg_unit( 'pole' => 'rod' );
+		$self->reg_unit( 'perch' => 'rod' );
+		$self->reg_unit( 'chain' => 20.1168, 'meter' );
+		$self->reg_unit( 'furlong' => 201.168, 'meter' );
+		$self->reg_unit( 'league' => 4.828032, 'kilometer' );
+		$self->reg_unit( 1.8288, 'fathom' => 'meter' );
 	}
 	
 	# Number of units in a single degree (lat or lon) at the equator.
@@ -131,15 +155,15 @@ sub formula {
 
 =head2 reg_unit
 
-  # Register 200,120 frog hops to travel the radius of the earth.
-  $geo->reg_unit( 'toad_hop', 200120 );
-  
-  # For every toad hop there are 6 frog hops.
-  $geo->reg_unit( 'frog_hop' => 6 => 'toad_hop' );
+  $geo->reg_unit( $radius, $key );
+  $geo->reg_unit( $key1 => $key2 );
+  $geo->reg_unit( $count1, $key1 => $key2 );
+  $geo->reg_unit( $key1 => $count2, $key2 );
+  $geo->reg_unit( $count1, $key1 => $count2, $key2 );
 
-This method is used to create custom unit types.  There are two ways of calling it, 
+This method is used to create custom unit types.  There are several ways of calling it, 
 depending on if you are defining the unit from scratch, or if you are basing it off 
-of an existing unit (such as saying inches = feet / 12 ).  When defining a unit from 
+of an existing unit (such as saying 12 inches = 1 foot ).  When defining a unit from 
 scratch you pass the name and rho (radius of the earth in that unit) value.
 
 So, if you wanted to do your calculations in human adult steps you would have to have an 
@@ -147,37 +171,40 @@ average human adult walk from the crust of the earth to the core (ignore the fac
 this is impossible).  So, assuming we did this and we came up with 43,200 steps, you'd 
 do something like the following.
 
-  # Create adult_step unit.
-  $geo->reg_unit( 'adult_step', 43200 );
+  # Define adult step unit.
+  $geo->reg_unit( 43200, 'adult step' );
+  # This can be read as "It takes 43,200 adult_steps to walk the radius of the earth".
 
 Now, if you also wanted to do distances in baby steps you might think "well, now I 
 gotta get a baby to walk to the center of the earth".  But, you don't have to!  If you do some 
 research you'll find (no research was actually conducted) that there are, on average, 
 4.7 baby steps in each adult step.
 
-  # Create baby_step unit based off adult_step unit.
-  $geo->reg_unit( 'baby_step' => 4.7 => 'adult_step' );
+  # Define baby step unit.
+  $geo->reg_unit( 4.7, 'baby step' => 'adult step' );
+  # This can be read as "4.7 baby steps is the same as one adult step".
 
 And if we were doing this in reverse and already had the baby step unit but not 
-the adult step...
-
-  # Create adult_step unit based off baby_step unit.
-  $geo->reg_unit( 'adult_step', 1/4.7, 'baby_step' );
+the adult step, you would still use the exact same syntax as above.
 
 =cut
 
 #-------------------------------------------------------------------------------
 sub reg_unit {
 	my $self = shift;
-	my($unit,$amount) = splice(@_,0,2);
-	if(@_){
-		# Make a new unit based off an existing one.
-		my $parent = shift;
-		if(!defined($self->{units}->{$parent})){ croak('The unit "'.$parent.'" is not defined'); }
-		$self->{units}->{$unit} = $self->{units}->{$parent} * $amount;
+	my $units = $self->{units};
+	my($count1,$key1,$count2,$key2);
+	$count1 = shift;
+	if($count1=~/[^\.0-9]/ or !@_){ $key1=$count1; $count1=1; }
+	else{ $key1 = shift; }
+	if(!@_){
+		$units->{$key1} = $count1;
 	}else{
-		# Make a new unit, or update an existing one.
-		$self->{units}->{$unit} = $amount;
+		$count2 = shift;
+		if($count2=~/[^\.0-9]/ or !@_){ $key2=$count2; $count2=1; }
+		else{ $key2 = shift; }
+		($key1,$key2) = ($key2,$key1) if( defined $units->{$key1} );
+		$units->{$key1} = ($units->{$key2}*$count1) / $count2;
 	}
 }
 #-------------------------------------------------------------------------------
@@ -375,6 +402,10 @@ sub closest {
 
 =head1 FORMULAS
 
+Currently Geo::Distance only has spherical and flat type formulas.  Work 
+is in progress to add even more accuracy with ellipsoid and geoid 
+formulas.
+
 =head2 hsin: Haversine Formula
 
   dlon = lon2 - lon1
@@ -446,6 +477,14 @@ radius simplistic calculation to find the locations that are obviously within th
 =item *
 
 Tests!  We need tests!
+
+=item *
+
+For more accuracy an ellipsoid formula would be nice.
+
+=item *
+
+For NASA-quality accuracy a geoid forumula.
 
 =back
 

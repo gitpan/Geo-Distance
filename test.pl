@@ -3,11 +3,39 @@
 # good tests!
 
 use strict;
-use Test;
-BEGIN { plan tests => 1 };
-use Geo::Distance;
+use Test::More qw(no_plan);
 
-ok(1); # Module loaded fine.
+BEGIN{ use_ok( 'Geo::Distance' ); }
+
+my $geo = eval{ return Geo::Distance->new() };
+ok(!$@,'Create a Geo::Distance object.');
+
+my $units = {
+	barleycorn => 752526278.492973,
+	fathom => 11652455.232,
+	'nautical mile' => 3440.41036717063,
+	kilometre => 6371.64,
+	foot => 20904330.7086614,
+	kilometer => 6371.64,
+	rod => 1266929.13385827,
+	'light second' => 0.0212535033152835,
+	mile => 3959.15354330709,
+	perch => 1266929.13385827,
+	centimetre => 637164000,
+	pole => 1266929.13385827,
+	yard => 6968110.23622047,
+	centimeter => 637164000,
+	millimetre => 6371640000,
+	chain => 316732.283464567,
+	millimeter => 6371640000,
+	furlong => 31673.2283464567,
+	meter => 6371640,
+	inch => 250851968.503937,
+	'poppy seed' => 3019734597.1564,
+	league => 1319.71784776903,
+	metre => 6371640
+};
+ok(eq_hash($units,$geo->{units}),'Live units data matches test data.');
 
 __END__
 
