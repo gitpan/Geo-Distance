@@ -1,0 +1,12 @@
+Revision history for Perl extension Geo::Distance.
+
+0.02  Fri Feb 14 22:10 2003
+  - Based on a suggestion by Jack D. I migrated the code 
+    to use Math::Trig for most of the distance math.
+  - POD documentation written.
+  - Object oriented interface created.
+
+0.01  Fri Feb 14 17:11 2003
+	- original version; created by h2xs 1.21 with options
+		-AX -n Geo::Distance
+

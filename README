@@ -1,0 +1,36 @@
+Geo/Distance version 0.02
+=========================
+
+This perl library provides the ability to calculate the distance 
+between two geographic points.  There is both a function oriented 
+interface, and an object oriented interface.  Both have the same 
+capabilities.  Your choice of interface depends on your programming 
+style and needs.  Geo::Distance only recognizes standard decimal 
+based longitude and latitude measurements.  If you have other 
+coordinate systems that you would like to use, then take a peak at 
+the Geo::Coordinates wrapper module.  The distance that is returned 
+can be in one of several different measurements, such as meters, 
+light seconds, miles, inches, feet, etc.
+
+INSTALLATION
+
+To install this module type the following:
+
+   perl Makefile.PL
+   make
+   make test
+   make install
+
+DEPENDENCIES
+
+This module requires these other modules and libraries:
+
+  Math::Trig (core Perl module)
+
+COPYRIGHT AND LICENCE
+
+Copyright (C) 2003 Aran Clary Deltac
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself. 
+
