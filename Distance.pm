@@ -21,7 +21,7 @@ our @EXPORT_OK = (
 	'&find_closest',
 	'&reg_unit'
 );
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 
 
 # See Math::Trig for what $rho is.
@@ -33,7 +33,7 @@ $rho{yard} = $rho{meter}*1.0936; # 1.0936 yards in one meter.
 $rho{foot} = $rho{yard}*3; # 3 feet in a yard.
 $rho{inch} = $rho{foot}*12; # 12 inches in a foot.
 $rho{light_second} = $rho{kilometer}/298000; # 298,000 kilometers in one light second.
-$rho{mile} = $rho{kilometer}/0.6214; # 0.6214 miles in one kilometer.
+$rho{mile} = $rho{kilometer}*0.6214; # 0.6214 miles in one kilometer.
 
 # Number of units in a single degree (lat or lon) at the equator.
 # Derived from doing dirty_distance('kilometer',10,0,11,0) = 111.317099692185
@@ -68,8 +68,7 @@ sub distance {
 	my %args = @_;
 	$args{unit}='mile' if(!$args{unit});
 	if(!$rho{$args{unit}}){ croak('Unkown unit'); }
-	if(!(_is_decimal($args{lon1}) and _is_decimal($args{lat1}) and _is_decimal($args{lon2}) and _is_decimal($args{lat2}))){ croak('You did not provide two complete sets of longitude and latitude'); }
-	return distance_calc($args{unit},$args{lon1},$args{lat1},$args{lon2},$args{lat2});
+	return distance_calc($args{unit},[$args{lon1},$args{lat1}],[$args{lon2},$args{lat2}]);
 }
 
 # Retrieves the distance between two sets of longitude and latitude.
@@ -144,12 +143,12 @@ __END__
 
 =head1 NAME
 
-Geo::Distance - Calc Distances and Closest Locations
+Geo::Distance - Calculate Distances and Closest Locations
 
 =head1 SYNOPSIS
 
   use Geo::Distance;
-  my $geo = new Get::Distance;
+  my $geo = new Geo::Distance;
   $geo->reg_unit('foobar',390);
   my $dist1 = $geo->distance( unit=>'foobar', lon1=>$lon1, lat1=>$lat1, lon2=>$lon2, lat2=>$lat2 );
   my $dist2 = $geo->distance_calc('light_second',$lon1,$lat1,$lon2,$lat2);
@@ -296,7 +295,7 @@ the farther out your distance is, and the more locations in the table, the slowe
 When searching a database you must also provide a table name to search and at least one field to return.  
 The table that you want to search in I<must> have lon and lat fields, both being of the type float.
 
-  # Database connection exammple.
+  # Database connection example.
   my $dbh = DBI->connect(...);
   
   # Find all zip codes within 50 miles of the county Wilbarger, TX, US.
@@ -388,6 +387,11 @@ the adult step...
 
 =item *
 
+Need a more accurate way of calculating the distance that does not rely upon Math::Trig.  Will 
+probably be math intensive, so Math::Trig should still remain the default for the sake of speed.
+
+=item *
+
 Berkely DB would be a nice alternative to DBI and Array find_closest() searching.
 
 =item *
@@ -416,7 +420,13 @@ the bad.  So, until this module reaches beta stage, don't be too peeved if somet
 work when you upgrade.
 
 This module relies on Math::Trig (great_circle_distance) for most of its computations.  Math::Trig 
-is a core Perl module.
+is a core Perl module.  Be aware that Math::Trig states:
+
+  "The answers may be off by few percentages because of the irregular (slightly aspherical) form of the Earth."
+
+also
+
+  "The formula used for grear circle distances is also somewhat unreliable for small distances (for locations separated less than about five degrees) because it uses arc cosine which is rather ill-conditioned for values close to zero."
 
 =head1 CHEERS
 
@@ -432,6 +442,10 @@ I<Michael R. Meuser>
 
 I<Jack D.>
 
+=item *
+
+I<Bryce Nesbitt>
+
 =back
 
 =head1 AUTHOR
@@ -441,7 +455,7 @@ Copyright (C) 2003 Aran Clary Deltac (CPAN: BLUEFEET)
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself. 
 
-Address bug reports and comments to: E<lt>geo-distance@bluefeet.netE<gt>. When sending bug reports, 
+Address bug reports and comments to: E<lt>aran@bluefeet.netE<gt>. When sending bug reports, 
 please provide the version of Geo::Distance, the version of Perl, and the name and version of the 
 operating system you are using.  Patches are welcome if you are brave!
 
