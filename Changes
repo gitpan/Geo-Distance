@@ -1,5 +1,9 @@
 Revision history for Perl extension Geo::Distance.
 
+0.06  Tue Jun 29 23:31 2004
+  - Optional Haversine formula.
+  - Misc documentation tweaks.
+
 0.05  Wed Mar 19 9:36 2003
   - Added a note in the documentation about the 
     inaccuracies of using Math::Trig.

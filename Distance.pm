@@ -13,19 +13,21 @@ our %EXPORT_TAGS = ( 'all' => [ qw(
 	&distance_calc
 	&find_closest
 	&reg_unit
+	&formula
 ) ] );
 our @EXPORT_OK = (
 	@{ $EXPORT_TAGS{'all'} },
 	'&distance',
 	'&distance_calc',
 	'&find_closest',
-	'&reg_unit'
+	'&reg_unit',
+	'&formula'
 );
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 
 # See Math::Trig for what $rho is.
-our(%rho);
+our(%rho,$formula);
 $rho{kilometer} = 6378; # Derived from the Math::Trig POD on the 'great_circle_distance'.
 $rho{meter} = $rho{kilometer}*1000; # 1000 meters in one kilometer.
 $rho{centimeter} = $rho{meter}*100; # 100 centimeters in one meter.
@@ -34,6 +36,7 @@ $rho{foot} = $rho{yard}*3; # 3 feet in a yard.
 $rho{inch} = $rho{foot}*12; # 12 inches in a foot.
 $rho{light_second} = $rho{kilometer}/298000; # 298,000 kilometers in one light second.
 $rho{mile} = $rho{kilometer}*0.6214; # 0.6214 miles in one kilometer.
+$formula = 'gcd';
 
 # Number of units in a single degree (lat or lon) at the equator.
 # Derived from doing dirty_distance('kilometer',10,0,11,0) = 111.317099692185
@@ -45,6 +48,16 @@ our $deg_ratio = 0.01745329252;
 sub new {
 	my $class = shift;
 	return bless {}, $class;
+}
+
+sub formula {
+	shift() if(ref($_[0]));
+	my $new_formula = shift;
+	if($new_formula ne 'gcd' and $new_formula ne 'hsin'){
+		croak('Invalid formula.  Only gcd and hsin are supported.');
+	}else{
+		$formula = $new_formula;
+	}
 }
 
 # Register a unit.
@@ -79,7 +92,15 @@ sub distance_calc {
 	my($ary1,$ary2);
 	if(ref($_[0])){ $ary1=shift; $ary2=shift; }
 	else{ $ary1=[]; $ary2=[]; ($$ary1[0],$$ary1[1],$$ary2[0],$$ary2[1]) = splice(@_,0,4); }
-	return great_circle_distance(deg2rad($$ary1[0]), deg2rad(90 - $$ary1[1]), deg2rad($$ary2[0]), deg2rad(90 - $$ary2[1]), $rho{$unit});
+	if($formula eq 'gcd'){
+		return great_circle_distance(deg2rad($$ary1[0]), deg2rad(90 - $$ary1[1]), deg2rad($$ary2[0]), deg2rad(90 - $$ary2[1]), $rho{$unit});
+	}elsif($formula eq 'hsin'){
+		my $a = (sin(deg2rad($$ary2[0] - $$ary1[0])/2)) ** 2 + cos(deg2rad($$ary1[0])) * cos(deg2rad($$ary2[0])) * (sin(deg2rad(($$ary2[1] - $$ary1[1]))/2)) ** 2;
+		my $c = 2 * atan2(sqrt($a), sqrt(1-$a));
+		return $rho{$unit} * $c;
+	}else{
+		croak("$formula is an unkown distance formula");
+	}
 }
 
 # Finds the closest set of locations.
@@ -96,7 +117,7 @@ sub find_closest {
 		croak('Not a DBI connection') if(ref($args{dbh}) !~ /DBI/);
 		croak('DBI connection accepted, but no table was provided') if(!$args{table});
 		if(!$args{field}){ $args{field}='id'; }
-		$args{array} = $args{dbh}->selectall_arrayref('SELECT lon,lat,'.$args{field}.' FROM '.$args{table}.' WHERE lon>='.($args{lon}-$degrees).' AND lat>='.($args{lat}-$degrees).' AND lon<='.($args{lon}+$degrees).' AND lat<='.($args{lat}+$degrees));
+		$args{array} = $args{dbh}->selectall_arrayref('SELECT lon,lat,'.$args{field}.' FROM '.$args{table}.' WHERE '.($args{where}?$args{where}.' AND ':'').'lon>='.($args{lon}-$degrees).' AND lat>='.($args{lat}-$degrees).' AND lon<='.($args{lon}+$degrees).' AND lat<='.($args{lat}+$degrees));
 	}elsif($args{array}){
 		croak('Not an array reference') if(ref($args{array}) !~ /ARRAY/);
 		# TODO: Need to do the simpler calculation like we do with the 
@@ -187,6 +208,34 @@ The latest version of the Geo::Distance module can be found here:
   http://www.cpan.org/ (or your closest CPAN mirror)
 
 Soon to be available will be some free to download and use data sets for use with find_closest().
+
+=head1 More Accurate!
+
+This new version of Geo::Distance has an experimental, but potentially much more accurate method 
+of calculating distances.  Instead of relying on the very inaccurate "great circle distance" (GCD) 
+calculations Geo::Distance may be enabled to use the Haversine formula (hsin).  Thanks to Dean Scott for 
+submitting the initial code to make this happen!  By default Geo::Distance will still use the old 
+GCD formula, so to enable the hsin formula do:
+
+In OO mode:
+
+  $geo->formula('hsin'); # Switches to useing Haversine formula.
+  $geo->formula('gcd'); # Switches to useing the great circle distance formula. (default)
+
+In non-OO mode:
+
+  formula('hsin');
+  formula('gcd'); # (default)
+
+Oh, and the only reason hsin isn't the default formula is because I haven't thuroughly tested it, but 
+at the same time want the rest of you coders to have access to the latest and greatest.  Once I've had 
+the chance to test it and received any feedback from you users I'll make hsin the default.
+
+=head1 Next Version: OO Only
+
+Unless anyone really needs the non-OO interface, I would like to just scrap it and have only the 
+OO interface.  It will be a month or two until the next version of Geo::Distance, so you have time to 
+contact me (scroll down to AUTHOR) before I change anything.
 
 =head1 OO VS. POLLUTION
 
@@ -419,6 +468,8 @@ features will be added and removed without notice, and good things will hopefull
 the bad.  So, until this module reaches beta stage, don't be too peeved if something doesn't 
 work when you upgrade.
 
+Note: The below does not apply if you are useing the hsin formula.
+
 This module relies on Math::Trig (great_circle_distance) for most of its computations.  Math::Trig 
 is a core Perl module.  Be aware that Math::Trig states:
 
@@ -436,6 +487,10 @@ Thanks!
 
 =item *
 
+I<Dean Scott>
+
+=item *
+
 I<Michael R. Meuser>
 
 =item *
@@ -450,7 +505,7 @@ I<Bryce Nesbitt>
 
 =head1 AUTHOR
 
-Copyright (C) 2003 Aran Clary Deltac (CPAN: BLUEFEET)
+Copyright (C) 2003-2004 Aran Clary Deltac (CPAN: BLUEFEET)
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself. 

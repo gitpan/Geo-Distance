@@ -1,4 +1,4 @@
-Geo/Distance version 0.05
+Geo/Distance version 0.06
 =========================
 
 This version is far superior to any previous.  Lots of feature 
@@ -33,7 +33,7 @@ This module requires these other modules and libraries:
 
 COPYRIGHT AND LICENCE
 
-Copyright (C) 2003 Aran Clary Deltac
+Copyright (C) 2003-2004 Aran Clary Deltac
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself. 
