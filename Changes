@@ -1,5 +1,12 @@
 Revision history for Perl extension Geo::Distance.
 
+0.03  Sat Feb 15 14:49 2003
+  - Documentation modified.
+  - Added find_closest() which accepts a $dbh for 
+    searching in an SQL database.
+  - distance_dirty() can now accept parameters as array 
+    refs. See the documentation for details.
+
 0.02  Fri Feb 14 22:10 2003
   - Based on a suggestion by Jack D. I migrated the code 
     to use Math::Trig for most of the distance math.
