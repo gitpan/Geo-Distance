@@ -9,17 +9,19 @@ use Math::Trig qw( great_circle_distance deg2rad );
 require Exporter;
 our @ISA = qw(Exporter);
 our %EXPORT_TAGS = ( 'all' => [ qw(
-	&geo_distance
-	&geo_distance_dirty
-	&geo_find_closest
+	&distance
+	&distance_calc
+	&find_closest
+	&reg_unit
 ) ] );
 our @EXPORT_OK = (
 	@{ $EXPORT_TAGS{'all'} },
-	'&geo_distance',
-	'&geo_distance_dirty',
-	'&geo_find_closest'
+	'&distance',
+	'&distance_calc',
+	'&find_closest',
+	'&reg_unit'
 );
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 
 # See Math::Trig for what $rho is.
@@ -33,16 +35,10 @@ $rho{inch} = $rho{foot}*12; # 12 inches in a foot.
 $rho{light_second} = $rho{kilometer}/298000; # 298,000 kilometers in one light second.
 $rho{mile} = $rho{kilometer}/0.6214; # 0.6214 miles in one kilometer.
 
-# Number of units in a single degree on the equator.
-my(%deg);
-$deg{kilometer} = 111.317099692185; # Derived from doing dirty_distance('kilometer',10,0,11,0).
-$deg{meter} = $deg{kilometer}*1000; # 1000 meters in one kilometer.
-$deg{centimeter} = $deg{meter}*100; # 100 centimeters in one meter.
-$deg{yard} = $deg{meter}*1.0936; # 1.0936 yards in one meter.
-$deg{foot} = $deg{yard}*3; # 3 feet in a yard.
-$deg{inch} = $deg{foot}*12; # 12 inches in a foot.
-$deg{light_second} = $deg{kilometer}/298000; # 298,000 kilometers in one light second.
-$deg{mile} = $deg{kilometer}/0.6214; # 0.6214 miles in one kilometer.
+# Number of units in a single degree (lat or lon) at the equator.
+# Derived from doing dirty_distance('kilometer',10,0,11,0) = 111.317099692185
+# Then dividing that by $unit{kilometer} = 6378
+our $deg_ratio = 0.01745329252;
 
 
 # New Object Constructor
@@ -51,78 +47,95 @@ sub new {
 	return bless {}, $class;
 }
 
-# Wrapper for object oriented access to geo_distance().
-sub distance {
-	if(!ref($_[0])){ croak('The routine distance() called without an object reference'); }
-	shift;
-	geo_distance(@_);
+# Register a unit.
+sub reg_unit {
+	shift() if(ref($_[0]));
+	my($unit,$amount) = splice(@_,0,2);
+	if(@_){
+		# Make a new unit based off an existing one.
+		my $parent = shift;
+		$rho{$unit} = $rho{$parent}*$amount;
+	}else{
+		# Make a new unit, or update an existing one.
+		$rho{$unit} = $amount;
+	}
 }
 
-# Checks input and passes input to distance_dirty().
-sub geo_distance {
-	if(ref($_[0])){ croak('The routine geo_distance() called with an object reference'); }
+
+# Checks input and passes input to distance_calc().
+sub distance {
+	shift() if(ref($_[0]));
 	my %args = @_;
 	$args{unit}='mile' if(!$args{unit});
 	if(!$rho{$args{unit}}){ croak('Unkown unit'); }
 	if(!(_is_decimal($args{lon1}) and _is_decimal($args{lat1}) and _is_decimal($args{lon2}) and _is_decimal($args{lat2}))){ croak('You did not provide two complete sets of longitude and latitude'); }
-	return geo_distance_dirty($args{unit},$args{lon1},$args{lat1},$args{lon2},$args{lat2});
-}
-
-# Wrapper for object oriented access to geo_distance_dirty().
-sub distance_dirty {
-	if(!ref($_[0])){ croak('The routine distance_dirty() called without an object reference'); }
-	shift;
-	geo_distance_dirty(@_);
+	return distance_calc($args{unit},$args{lon1},$args{lat1},$args{lon2},$args{lat2});
 }
 
 # Retrieves the distance between two sets of longitude and latitude.
 # Does not check validity of input.
-sub geo_distance_dirty {
-	if(ref($_[0])){ croak('The routine geo_distance_dirty() called with an object reference'); }
+sub distance_calc {
+	shift() if(ref($_[0]));
 	my $unit = shift;
 	my($ary1,$ary2);
 	if(ref($_[0])){ $ary1=shift; $ary2=shift; }
-	else{ ($$ary1[0],$$ary1[1],$$ary2[0],$$ary2[1]) = splice(@_,0,4); }
+	else{ $ary1=[]; $ary2=[]; ($$ary1[0],$$ary1[1],$$ary2[0],$$ary2[1]) = splice(@_,0,4); }
 	return great_circle_distance(deg2rad($$ary1[0]), deg2rad(90 - $$ary1[1]), deg2rad($$ary2[0]), deg2rad(90 - $$ary2[1]), $rho{$unit});
 }
 
-# Checks if a value is a decimal.
-sub _is_decimal {
-	return(defined($_[0]) and $_[0] =~ /^[-+]?[0-9]+(\.[0-9]+)?$/s);
-}
-
-# Wrapper for object oriented access to geo_find_closest().
-sub find_closest {
-	if(!ref($_[0])){ croak('The routine find_closest() called without an object reference'); }
-	shift;
-	geo_find_closest(@_);
-}
-
 # Finds the closest set of locations.
-sub geo_find_closest {
+sub find_closest {
+	shift() if(ref($_[0]));
 	my %args = @_;
-	croak('A distance was not provided') if(!$args{distance});
-	croak('No valid unit type was passed') if(!$args{unit} or !$deg{$args{unit}});
-	croak('No valid longitude was passed') if(!$args{lon} or !_is_decimal($args{lon}));
-	croak('No valid latitude was passed') if(!$args{lat} or !_is_decimal($args{lat}));
-	my $degrees = $args{distance}/$deg{$args{unit}};
-
+	croak('A distance was not provided') if(! defined $args{distance} );
+	croak('No valid unit type was passed') if(! (defined($args{unit}) and defined($rho{$args{unit}})) );
+	croak('No valid longitude was passed') if(! defined $args{lon} );
+	croak('No valid latitude was passed') if(! defined $args{lat} );
+	# Check for what we're going to search with.
 	if($args{dbh}){
+		my $degrees = $args{distance}/($deg_ratio*$rho{$args{unit}});
 		croak('Not a DBI connection') if(ref($args{dbh}) !~ /DBI/);
 		croak('DBI connection accepted, but no table was provided') if(!$args{table});
 		if(!$args{field}){ $args{field}='id'; }
-		my $items = $args{dbh}->selectall_arrayref('SELECT '.$args{field}.',lon,lat FROM '.$args{table}.' WHERE lon>='.($args{lon}-$degrees).' AND lat>='.($args{lat}-$degrees).' AND lon<='.($args{lon}+$degrees).' AND lat<='.($args{lat}+$degrees));
-		my @real_items;
-		$degrees = $degrees/2;
-		foreach my $item (@$items){
-			if(geo_distance_dirty($args{unit},$args{lon},$args{lat},$$item[1],$$item[2])<=$args{distance}){
-				$real_items[@real_items] = $$item[0];
-			}
-		}
-		return \@real_items;
+		$args{array} = $args{dbh}->selectall_arrayref('SELECT lon,lat,'.$args{field}.' FROM '.$args{table}.' WHERE lon>='.($args{lon}-$degrees).' AND lat>='.($args{lat}-$degrees).' AND lon<='.($args{lon}+$degrees).' AND lat<='.($args{lat}+$degrees));
+	}elsif($args{array}){
+		croak('Not an array reference') if(ref($args{array}) !~ /ARRAY/);
+		# TODO: Need to do the simpler calculation like we do with the 
+		# dbh to take out the obviously too far away locations.
 	}else{
 		croak('Unkown data retrieval method');
 	}
+	# Weed out places farther away than we want.
+	my($i,$location,$distance,@locations,@distances);
+	for($i=0; $i<@{$args{array}}; $i++){
+		$location = ${$args{array}}[$i];
+		$distance = distance_calc($args{unit},$args{lon},$args{lat},$$location[0],$$location[1]);
+		if($distance<=$args{distance}){
+			$locations[@locations] = $location;
+			$distances[@distances] = $distance;
+		}
+	}
+	if(defined($args{count})){
+		for(my $i=@distances-1; $i>=0; $i--){
+			for(my $j=$i-1; $j>=0; $j--){
+				if($distances[$i] < $distances[$j]){
+					# Move Location Up
+					$location = $locations[$i];
+					$locations[$i] = $locations[$j];
+					$locations[$j] = $location;
+					# Move Distance Up
+					$distance = $distances[$i];
+					$distances[$i] = $distances[$j];
+					$distances[$j] = $distance;
+				}
+			}
+		}
+		if($args{count}>0){
+			splice(@locations,$args{count});
+			splice(@distances,$args{count});
+		}
+	}
+	return( wantarray() ? (\@locations,\@distances) : \@locations );
 }
 
 
@@ -131,64 +144,104 @@ __END__
 
 =head1 NAME
 
-Geo::Distance - Calc Distances and Closest Locations (v0.03)
+Geo::Distance - Calc Distances and Closest Locations
 
 =head1 SYNOPSIS
 
   use Geo::Distance;
   my $geo = new Get::Distance;
-  my $dist1 = $geo->distance( unit=>'mile', lon1=>$lon1, lat1=>$lat1, lon2=>$lon2, lat2=>$lat2 );
-  my $dist2 = $geo->distance_dirty('light_second',$lon1,$lat1,$lon2,$lat2);
-  my $dist3 = $geo->distance_dirty('centimeter',$ary_ref1,$ary_ref2);
-  my $locations = $geo->find_closest(lon => $lon,lat => $lat,distance => $dist,unit => $unt,dbh => $dbh,table => $tbl,field => $fld);
+  $geo->reg_unit('foobar',390);
+  my $dist1 = $geo->distance( unit=>'foobar', lon1=>$lon1, lat1=>$lat1, lon2=>$lon2, lat2=>$lat2 );
+  my $dist2 = $geo->distance_calc('light_second',$lon1,$lat1,$lon2,$lat2);
+  my $dist3 = $geo->distance_calc('centimeter',$ary_ref1,$ary_ref2);
+  my $locations = $geo->find_closest(
+  	lon=>$lon, lat=>$lat,
+  	distance=>$dist, unit=>$unt,
+  	dbh=>$dbh, table=>$tbl, field=>$fld
+  );
 
 or
 
   use Geo::Distance qw{ :all };
-  my $dist1 = geo_distance( unit=>'meter', lon1=>$lon1, lat1=>$lat1, lon2=>$lon2, lat2=>$lat2 );
-  my $dist2 = geo_distance_dirty('inch',$lon1,$lat1,$lon2,$lat2);
-  my $dist3 = geo_distance_dirty('foot',$ary_ref1,$ary_ref2);
-  my $locations = geo_find_closest(lon => $lon,lat => $lat,distance => $dist,unit => $unt,dbh => $dbh,table => $tbl,field => $fld);
+  reg_unit('dinosaur_step',44560);
+  my $dist1 = distance( unit=>'meter', lon1=>$lon1, lat1=>$lat1, lon2=>$lon2, lat2=>$lat2 );
+  my $dist2 = distance_calc('dinosaur_step',$lon1,$lat1,$lon2,$lat2);
+  my $dist3 = distance_calc('foot',$ary_ref1,$ary_ref2);
+  my $locations = find_closest(
+  	lon=>$lon, lat=>$lat,
+  	distance=>$dist, unit=>$unt,
+  	dbh=>$dbh, table=>$tbl, field=>$fld
+  );
 
 =head1 DESCRIPTION
 
-This perl library provides the ability to calculate the distance between two geographic points and 
-to find the closest locations to a single point using a database connection.  
-There is both a function oriented interface, and an object oriented interface.  Both have the 
-same capabilities.  Your choice of interface depends on your programming style and needs.  
-Geo::Distance only recognizes standard decimal based longitude and latitude measurements.  If you 
-have other coordinate systems that you would like to use, then take a peak at the Geo::Coordinates::* 
-modules.
+This perl library aims to provide as many tools to make it as simple as possible to calculate 
+distances between geographic points, and anything that can be derived from that.  Currently 
+there is support for finding the closest locations within a specified distance, to find the 
+closest number of points to a specified point, and to do basic point-to-point distance 
+calculations.
 
-The latest version of the Geo::Distance modules can be found here:
+The latest version of the Geo::Distance module can be found here:
 
   http://www.bluefeet.net/perl/modules/geo-distance/
+    and of course at,
+  http://www.cpan.org/ (or your closest CPAN mirror)
 
 Soon to be available will be some free to download and use data sets for use with find_closest().
 
-=head1 OO VERSUS POLLUTION
+=head1 OO VS. POLLUTION
 
-This module provides two styles of programming, the first of which being an elegant object oriented 
+There are two styles of programming available.  The first of which being an elegant object oriented 
 interface and the second being a namespace polluting function interface.  Personally, I like to 
 pollute my namespace, but an object oriented interface does come in handy at times.
 
-Both the object oriented interface and the function interface have the same functions, just with 
-slightly different names.
+Both the object oriented interface and the function interface have the same functions, just a 
+different context under which to call them with.
 
 At the moment there are several ways to import functions.  The most common being the B<:all> export 
-tag.  This will export the geo_distance(), geo_distance_dirty(), and geo_find_closest() functions.  
+tag.  This will export the distance(), distance_calc(), and find_closest() functions.  
 You may also export the functions individually, as follows:
 
-  # Export just geo_distance().
-  use Geo::Distance qw( geo_distance );
+  # Export just distance().
+  use Geo::Distance qw( distance );
   
-  # Export just geo_distance_dirty().
-  use Geo::Distance qw( geo_distance_dirty );
+  # Export just find_closest().
+  use Geo::Distance qw( find_closest );
   
   # Export all functions.
-  use Geo::Distance qw( geo_distance geo_distance_dirty geo_find_closest );
+  use Geo::Distance qw( distance distance_calc find_closest );
   # or
   use Geo::Distance qw( :all );
+
+=head1 PROPERTIES
+
+=head2 UNITS
+
+All functions accept a unit type to do the computations of distance with.  There are several 
+of the most common unit types pre-defined.
+
+  kilometer
+  meter
+  centimeter
+  mile
+  yard
+  foot
+  inches
+  light_second
+
+If you want to use a different unit type than is available use the reg_unit() function.
+
+=head2 LATITUDE AND LONGITUDE
+
+When a function needs a lon and lat they must always be in decimal format.  If you have a 
+different coordinate system and need to convert head on over to your local CPAN and do a look 
+up for any Geo::Coordinates::* modules.
+
+  # DMS to Decimal
+  my $decimal = $degrees + ($minutes/60) + ($seconds/3600);
+  
+  # Precision Six Integer to Decimal
+  my $decimal = $integer * .000001;
 
 =head1 METHODS
 
@@ -201,60 +254,153 @@ return the same results.
 Takes a name value pairs in a hash style.  All arguments will be validated.  Returns the distance 
 between the two locations in the unit type passed to it.
 
-  # unit => mile|light_second|kilometer|meter|centimeter|yard|foot|inches
-  # lon1,lat1 => Latitude and longitude in decimal format for the first location.
-  # lon2,lat2 => Ditto, but for the second location.
-  
   my $dist1 = geo_distance( unit=>'meter', lon1=>$lon1, lat1=>$lat1, lon2=>$lon2, lat2=>$lat2 );
   my $dist2 = $geo->distance( unit=>'mile', lon1=>$lon1, lat1=>$lat1, lon2=>$lon2, lat2=>$lat2 );
 
-=head2 DISTANCE_DIRTY
+=head2 DISTANCE_CALC
 
-This method is used internally by distance() to do the actual distance 
-calculation.  The benefit of using distance_dirty() is that it is faster than its counterpart 
-because it does not check the input and does not accept a hash style argument list.
+This method is used internally by distance() and find_closest() to do the actual distance 
+calculation.  The benefit of using distance_calc() above distance() is that it is faster, 
+it does not verify the input, and does not accept a hash style argument list.
 
 This method takes arguments in two forms, as five arguments or as three. The five arguments 
 are unit, lon1, lat1, lon2, and lat2.  See the distance method for a description of these arguments.  
 The three arguments are unit, array_ref1, and array_ref2.  The array_refs are array references each 
 with two entries, the first being lon, and the second being lat.
 
-  my $dist1 = $geo->distance_dirty('light_second',$lon1,$lat1,$lon2,$lat2);
-  my $dist2 = geo_distance_dirty('inch',$lon1,$lat1,$lon2,$lat2);
+  my $dist1 = $geo->distance_calc('light_second',$lon1,$lat1,$lon2,$lat2);
+  my $dist2 = distance_calc('inch',$lon1,$lat1,$lon2,$lat2);
   
-  my $dist3 = $geo->distance_dirty('centimeter',$ary_ref1,$ary_ref2);
-  my $dist4 = geo_distance_dirty('foot',$ary_ref1,$ary_ref2);
+  my $dist3 = $geo->distance_calc('centimeter',$ary_ref1,$ary_ref2);
+  my $dist4 = distance_calc('foot',$ary_ref1,$ary_ref2);
 
 =head2 FIND_CLOSEST
 
-When passed a DBI database connection this method will search it for the closest 
-locations in the selected table and will return an array ref filled with the values 
-of the field that you passed in.
+This method finds the closest locations within a certain distance and returns an array reference of 
+arrays of locations, and optionally an array reference of distances, depending on if you called 
+with a scalar context or array context.
+
+  my $locations = $geo->find_closest(...);
+  my ($locations,$distances) = $geo->find_closest(...);
+
+The locations to search can be provided as either a database connection or as an array ref.  
+
+B<DATABASE SEARCH>
 
 This method uses some very simplistic calculations to SQL select out of the $dbh.  This 
-means that the SQL should work fine on almost any database (only tested on MySQL!) and 
+means that the SQL should work fine on almost any database (only tested on MySQL so far) and 
 this also means that it is B<very> fast.  Once this sub set of locations has been retrieved 
 then more precise calculations are made to narrow down the result set.  Remember, though, that 
 the farther out your distance is, and the more locations in the table, the slower your searches will be.
 
+When searching a database you must also provide a table name to search and at least one field to return.  
 The table that you want to search in I<must> have lon and lat fields, both being of the type float.
 
-  # Find all counties within 50 miles of Wilbarger, TX, USA.
-  my $dbh = DBI->connect('DBI:mysql:database=geography;host=localhost', '', '', {AutoCommit=>1,RaiseError=>1});
-  my($lon,$lat) = $dbh->selectrow_array('SELECT lon,lat FROM counties WHERE fips=48487');
-  my $counties = geo_find_closest(
+  # Database connection exammple.
+  my $dbh = DBI->connect(...);
+  
+  # Find all zip codes within 50 miles of the county Wilbarger, TX, US.
+  my($lon,$lat) = $dbh->selectrow_array(
+    'SELECT lon,lat FROM counties WHERE fips=48487'
+  );
+  my($zips,$distances) = geo_find_closest(
     lon => $lon,
     lat => $lat,
-    distance => 200,
+    distance => 50,
     unit => 'mile',
     dbh => $dbh,
-    table => 'counties',
-    field => 'fips'
+    table => 'zipcodes',
+    field => 'id,state'
+  );
+  
+  # Internally an SQL select like this is created:
+  #   SELECT lon,lat,id,state FROM counties WHERE ...
+  
+  # Print out each Zip.
+  for(my $i=0; $i<@$zips; $i++){
+  	# @$zips = [lon,lat,id,state]
+  	my $zip = $$zips[$i];
+  	print "The Zip $$zip[2], $$zip[3], ($$zip[0] x $$zip[1]) was $$distances[$i] miles away from $lon x $lat.\n";
+  }
+
+B<ARRAY REFERENCE SEARCH>
+
+You may also pass an array reference as the data to search. While not regarded as an 
+effecient method of finding closest locations, it is still useful at times especially 
+for testing.
+
+  my $locations_db = load_zips();
+  $locations = find_closest(
+    array=>$locations_db,
+    lon=>$lon,
+    lat=>$lat,
+    unit=>'mile',
+    distance=>'50'
   );
 
-For reference, this internally creates an SQL statement similar to:
+B<COUNT ARGUMENT>
 
-  SELECT fips,lon,lat FROM counties WHERE ...
+find_closest() has an optional 'count' field that provides the ability to only retrieve a certain number 
+of locations.
+
+  # Retrieve the 5 closest locations.
+  $locations = find_closest(count=>5, ...);
+
+Coincidentally, if you request a zero count (count=>0), you will get all locations as if you didn't specify 
+a count except they will be ordered by distance.
+
+  # Sort locations by their distance.
+  ($locations,$distances) = find_closest(count=>0, ...);
+
+=head2 REG_UNIT
+
+This method is used to create custom unit types.  There are two ways of calling it, 
+depending on if you are defining the unit from scratch, or if you are basing it off 
+of an existing unit (such as saying inches = feet / 12 ).  When defining a unit from 
+scratch you pass the name and rho (radius of the earth in that unit) value.
+
+So, if you wanted to do your calculations in human adult steps you would have to have an 
+average human adult walk around the earth at the equator (ignore the fact that if you did 
+this you would first have to make bridges that span the oceans around the earth).  So, 
+assuming we did this and we came up with 43,200 steps to make it all the way around the 
+equator of the earth, you'd do something like the following.
+
+  # Create adult_step unit.
+  $geo->reg_unit('adult_step',43200);
+
+Now, if you also wanted to do distances in baby steps you might think "well, now I 
+gotta get a baby to walk around the earth".  But, you don't have to!  If you do some 
+research you'll find (no research was actually conducted) that there are, on average, 
+4.7 baby steps in each adult step.
+
+  # Create baby_step unit based off adult_step unit.
+  $geo->reg_unit('baby_step',4.7,'adult_step');
+
+And if we were doing this in reverse and already had the baby step unit but not 
+the adult step...
+
+  # Create adult_step unit based off baby_step unit.
+  $geo->reg_unit('adult_step',1/4.7,'baby_step');
+
+=head1 TODO
+
+=over 4
+
+=item *
+
+Berkely DB would be a nice alternative to DBI and Array find_closest() searching.
+
+=item *
+
+Array searching by find_closest() needs to do a first pass using the more simplistic outer radius 
+calculation, like it does with a database connection.
+
+=item *
+
+A second pass should be done in find_closest before distance calculations are made that does an inner 
+radius simplistic calculation.
+
+=back
 
 =head1 BUGS
 
@@ -272,6 +418,22 @@ work when you upgrade.
 This module relies on Math::Trig (great_circle_distance) for most of its computations.  Math::Trig 
 is a core Perl module.
 
+=head1 CHEERS
+
+Thanks!
+
+=over 4
+
+=item *
+
+I<Michael R. Meuser>
+
+=item *
+
+I<Jack D.>
+
+=back
+
 =head1 AUTHOR
 
 Copyright (C) 2003 Aran Clary Deltac (CPAN: BLUEFEET)
@@ -279,7 +441,7 @@ Copyright (C) 2003 Aran Clary Deltac (CPAN: BLUEFEET)
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself. 
 
-Address bug reports and comments to: E<lt>geo_distance@bluefeet.netE<gt>. When sending bug reports, 
+Address bug reports and comments to: E<lt>geo-distance@bluefeet.netE<gt>. When sending bug reports, 
 please provide the version of Geo::Distance, the version of Perl, and the name and version of the 
 operating system you are using.  Patches are welcome if you are brave!
 

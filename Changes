@@ -1,11 +1,31 @@
 Revision history for Perl extension Geo::Distance.
 
+0.04  Tue Feb 18 16:27 2003
+  - Documentation revised once again.
+  - Added reg_unit() for adding your own unit type.
+  - find_closest has been overhauled:
+    - Now accepts more than one field in the 
+      field=>'' parameter.
+    - Will now return an array reference 
+      of distances instead of attaching the 
+      distances to the locations array ref.
+    - A little more effecient.
+    - Now accepts a count argument.
+    - Accepts an array reference for searching. 
+      Mostly good for testing, but who knows?
+  - Removed geo_ portion of names for exported 
+    functions.
+  - Removed some of the input checking.  Just not 
+    necessary.
+  - Enhanced tests.  Now we're actually doing some 
+    real testing.  Need more tests tho.
+
 0.03  Sat Feb 15 14:49 2003
   - Documentation modified.
   - Added find_closest() which accepts a $dbh for 
     searching in an SQL database.
-  - distance_dirty() can now accept parameters as array 
-    refs. See the documentation for details.
+  - distance_dirty() can now accept locations as 
+    array refs.
 
 0.02  Fri Feb 14 22:10 2003
   - Based on a suggestion by Jack D. I migrated the code 
@@ -16,4 +36,3 @@ Revision history for Perl extension Geo::Distance.
 0.01  Fri Feb 14 17:11 2003
 	- original version; created by h2xs 1.21 with options
 		-AX -n Geo::Distance
-

@@ -1,5 +1,8 @@
-Geo/Distance version 0.03
+Geo/Distance version 0.04
 =========================
+
+This version is far superior to any previous.  Lots of feature 
+and effeciency enhancements.
 
 This perl library provides the ability to calculate the distance 
 between two geographic points and to find the closest locations to 
