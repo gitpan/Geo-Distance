@@ -4,10 +4,12 @@
 
 use strict;
 use Test;
-BEGIN { plan tests => 5 };
-use Geo::Distance qw{ :all };
+BEGIN { plan tests => 1 };
+use Geo::Distance;
 
 ok(1); # Module loaded fine.
+
+__END__
 
 my($zips_db,$zips);
 

@@ -1,5 +1,14 @@
 Revision history for Perl extension Geo::Distance.
 
+0.07
+  - Intermixed documentation with code so it is easier to keep 
+	  the docs up-to-date.
+	- OO interface only - method interface completely removed.
+	- By default no units are defined.  Call default_units.
+	- Slightly more precise measurement of the base kilometer rho.
+	- Added "nautical mile" unit type.
+	- Reworked the closest() function.
+
 0.06  Tue Jun 29 23:31 2004
   - Optional Haversine formula.
   - Misc documentation tweaks.

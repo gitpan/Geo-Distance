@@ -1,8 +1,5 @@
-Geo/Distance version 0.06
+Geo/Distance version 0.07
 =========================
-
-This version is far superior to any previous.  Lots of feature 
-and effeciency enhancements.
 
 This perl library provides the ability to calculate the distance 
 between two geographic points and to find the closest locations to 
@@ -27,13 +24,11 @@ To install this module type the following:
 
 DEPENDENCIES
 
-This module requires these other modules and libraries:
-
-  Math::Trig (core Perl module)
+None.
 
 COPYRIGHT AND LICENCE
 
-Copyright (C) 2003-2004 Aran Clary Deltac
+Copyright (C) 2003-2005 Aran Clary Deltac
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself. 

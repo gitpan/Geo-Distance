@@ -1,166 +1,5 @@
 package Geo::Distance;
-
-use 5.006;
-use strict;
-use warnings;
-use Carp;
-use Math::Trig qw( great_circle_distance deg2rad );
-
-require Exporter;
-our @ISA = qw(Exporter);
-our %EXPORT_TAGS = ( 'all' => [ qw(
-	&distance
-	&distance_calc
-	&find_closest
-	&reg_unit
-	&formula
-) ] );
-our @EXPORT_OK = (
-	@{ $EXPORT_TAGS{'all'} },
-	'&distance',
-	'&distance_calc',
-	'&find_closest',
-	'&reg_unit',
-	'&formula'
-);
-our $VERSION = '0.06';
-
-
-# See Math::Trig for what $rho is.
-our(%rho,$formula);
-$rho{kilometer} = 6378; # Derived from the Math::Trig POD on the 'great_circle_distance'.
-$rho{meter} = $rho{kilometer}*1000; # 1000 meters in one kilometer.
-$rho{centimeter} = $rho{meter}*100; # 100 centimeters in one meter.
-$rho{yard} = $rho{meter}*1.0936; # 1.0936 yards in one meter.
-$rho{foot} = $rho{yard}*3; # 3 feet in a yard.
-$rho{inch} = $rho{foot}*12; # 12 inches in a foot.
-$rho{light_second} = $rho{kilometer}/298000; # 298,000 kilometers in one light second.
-$rho{mile} = $rho{kilometer}*0.6214; # 0.6214 miles in one kilometer.
-$formula = 'gcd';
-
-# Number of units in a single degree (lat or lon) at the equator.
-# Derived from doing dirty_distance('kilometer',10,0,11,0) = 111.317099692185
-# Then dividing that by $unit{kilometer} = 6378
-our $deg_ratio = 0.01745329252;
-
-
-# New Object Constructor
-sub new {
-	my $class = shift;
-	return bless {}, $class;
-}
-
-sub formula {
-	shift() if(ref($_[0]));
-	my $new_formula = shift;
-	if($new_formula ne 'gcd' and $new_formula ne 'hsin'){
-		croak('Invalid formula.  Only gcd and hsin are supported.');
-	}else{
-		$formula = $new_formula;
-	}
-}
-
-# Register a unit.
-sub reg_unit {
-	shift() if(ref($_[0]));
-	my($unit,$amount) = splice(@_,0,2);
-	if(@_){
-		# Make a new unit based off an existing one.
-		my $parent = shift;
-		$rho{$unit} = $rho{$parent}*$amount;
-	}else{
-		# Make a new unit, or update an existing one.
-		$rho{$unit} = $amount;
-	}
-}
-
-
-# Checks input and passes input to distance_calc().
-sub distance {
-	shift() if(ref($_[0]));
-	my %args = @_;
-	$args{unit}='mile' if(!$args{unit});
-	if(!$rho{$args{unit}}){ croak('Unkown unit'); }
-	return distance_calc($args{unit},[$args{lon1},$args{lat1}],[$args{lon2},$args{lat2}]);
-}
-
-# Retrieves the distance between two sets of longitude and latitude.
-# Does not check validity of input.
-sub distance_calc {
-	shift() if(ref($_[0]));
-	my $unit = shift;
-	my($ary1,$ary2);
-	if(ref($_[0])){ $ary1=shift; $ary2=shift; }
-	else{ $ary1=[]; $ary2=[]; ($$ary1[0],$$ary1[1],$$ary2[0],$$ary2[1]) = splice(@_,0,4); }
-	if($formula eq 'gcd'){
-		return great_circle_distance(deg2rad($$ary1[0]), deg2rad(90 - $$ary1[1]), deg2rad($$ary2[0]), deg2rad(90 - $$ary2[1]), $rho{$unit});
-	}elsif($formula eq 'hsin'){
-		my $a = (sin(deg2rad($$ary2[0] - $$ary1[0])/2)) ** 2 + cos(deg2rad($$ary1[0])) * cos(deg2rad($$ary2[0])) * (sin(deg2rad(($$ary2[1] - $$ary1[1]))/2)) ** 2;
-		my $c = 2 * atan2(sqrt($a), sqrt(1-$a));
-		return $rho{$unit} * $c;
-	}else{
-		croak("$formula is an unkown distance formula");
-	}
-}
-
-# Finds the closest set of locations.
-sub find_closest {
-	shift() if(ref($_[0]));
-	my %args = @_;
-	croak('A distance was not provided') if(! defined $args{distance} );
-	croak('No valid unit type was passed') if(! (defined($args{unit}) and defined($rho{$args{unit}})) );
-	croak('No valid longitude was passed') if(! defined $args{lon} );
-	croak('No valid latitude was passed') if(! defined $args{lat} );
-	# Check for what we're going to search with.
-	if($args{dbh}){
-		my $degrees = $args{distance}/($deg_ratio*$rho{$args{unit}});
-		croak('Not a DBI connection') if(ref($args{dbh}) !~ /DBI/);
-		croak('DBI connection accepted, but no table was provided') if(!$args{table});
-		if(!$args{field}){ $args{field}='id'; }
-		$args{array} = $args{dbh}->selectall_arrayref('SELECT lon,lat,'.$args{field}.' FROM '.$args{table}.' WHERE '.($args{where}?$args{where}.' AND ':'').'lon>='.($args{lon}-$degrees).' AND lat>='.($args{lat}-$degrees).' AND lon<='.($args{lon}+$degrees).' AND lat<='.($args{lat}+$degrees));
-	}elsif($args{array}){
-		croak('Not an array reference') if(ref($args{array}) !~ /ARRAY/);
-		# TODO: Need to do the simpler calculation like we do with the 
-		# dbh to take out the obviously too far away locations.
-	}else{
-		croak('Unkown data retrieval method');
-	}
-	# Weed out places farther away than we want.
-	my($i,$location,$distance,@locations,@distances);
-	for($i=0; $i<@{$args{array}}; $i++){
-		$location = ${$args{array}}[$i];
-		$distance = distance_calc($args{unit},$args{lon},$args{lat},$$location[0],$$location[1]);
-		if($distance<=$args{distance}){
-			$locations[@locations] = $location;
-			$distances[@distances] = $distance;
-		}
-	}
-	if(defined($args{count})){
-		for(my $i=@distances-1; $i>=0; $i--){
-			for(my $j=$i-1; $j>=0; $j--){
-				if($distances[$i] < $distances[$j]){
-					# Move Location Up
-					$location = $locations[$i];
-					$locations[$i] = $locations[$j];
-					$locations[$j] = $location;
-					# Move Distance Up
-					$distance = $distances[$i];
-					$distances[$i] = $distances[$j];
-					$distances[$j] = $distance;
-				}
-			}
-		}
-		if($args{count}>0){
-			splice(@locations,$args{count});
-			splice(@distances,$args{count});
-		}
-	}
-	return( wantarray() ? (\@locations,\@distances) : \@locations );
-}
-
-
-1;
-__END__
+#-------------------------------------------------------------------------------
 
 =head1 NAME
 
@@ -170,28 +9,11 @@ Geo::Distance - Calculate Distances and Closest Locations
 
   use Geo::Distance;
   my $geo = new Geo::Distance;
-  $geo->reg_unit('foobar',390);
-  my $dist1 = $geo->distance( unit=>'foobar', lon1=>$lon1, lat1=>$lat1, lon2=>$lon2, lat2=>$lat2 );
-  my $dist2 = $geo->distance_calc('light_second',$lon1,$lat1,$lon2,$lat2);
-  my $dist3 = $geo->distance_calc('centimeter',$ary_ref1,$ary_ref2);
-  my $locations = $geo->find_closest(
-  	lon=>$lon, lat=>$lat,
-  	distance=>$dist, unit=>$unt,
-  	dbh=>$dbh, table=>$tbl, field=>$fld
-  );
-
-or
-
-  use Geo::Distance qw{ :all };
-  reg_unit('dinosaur_step',44560);
-  my $dist1 = distance( unit=>'meter', lon1=>$lon1, lat1=>$lat1, lon2=>$lon2, lat2=>$lat2 );
-  my $dist2 = distance_calc('dinosaur_step',$lon1,$lat1,$lon2,$lat2);
-  my $dist3 = distance_calc('foot',$ary_ref1,$ary_ref2);
-  my $locations = find_closest(
-  	lon=>$lon, lat=>$lat,
-  	distance=>$dist, unit=>$unt,
-  	dbh=>$dbh, table=>$tbl, field=>$fld
-  );
+  $geo->formula('hsin');
+  $geo->reg_unit( 'toad_hop', 200120 );
+  $geo->reg_unit( 'frog_hop' => 6 => 'toad_hop' );
+  my $distance = $geo->distance( 'unit_type', $lon1,$lat1 => $lon2,$lat2 );
+  my $locations = $geo->closest( $unit, $unit_count, $lon, $lat, $source, $options);
 
 =head1 DESCRIPTION
 
@@ -201,89 +23,35 @@ there is support for finding the closest locations within a specified distance, 
 closest number of points to a specified point, and to do basic point-to-point distance 
 calculations.
 
-The latest version of the Geo::Distance module can be found here:
+=head1 STABILITY
 
-  http://www.bluefeet.net/perl/modules/geo-distance/
-    and of course at,
-  http://www.cpan.org/ (or your closest CPAN mirror)
+This is the first version of Geo::Distance to be considered to have a stable interface.  
+You can now rely on the interface to be backwards compatible to version 0.07 and newer.
 
-Soon to be available will be some free to download and use data sets for use with find_closest().
+=cut
 
-=head1 More Accurate!
-
-This new version of Geo::Distance has an experimental, but potentially much more accurate method 
-of calculating distances.  Instead of relying on the very inaccurate "great circle distance" (GCD) 
-calculations Geo::Distance may be enabled to use the Haversine formula (hsin).  Thanks to Dean Scott for 
-submitting the initial code to make this happen!  By default Geo::Distance will still use the old 
-GCD formula, so to enable the hsin formula do:
-
-In OO mode:
-
-  $geo->formula('hsin'); # Switches to useing Haversine formula.
-  $geo->formula('gcd'); # Switches to useing the great circle distance formula. (default)
-
-In non-OO mode:
-
-  formula('hsin');
-  formula('gcd'); # (default)
-
-Oh, and the only reason hsin isn't the default formula is because I haven't thuroughly tested it, but 
-at the same time want the rest of you coders to have access to the latest and greatest.  Once I've had 
-the chance to test it and received any feedback from you users I'll make hsin the default.
-
-=head1 Next Version: OO Only
-
-Unless anyone really needs the non-OO interface, I would like to just scrap it and have only the 
-OO interface.  It will be a month or two until the next version of Geo::Distance, so you have time to 
-contact me (scroll down to AUTHOR) before I change anything.
-
-=head1 OO VS. POLLUTION
-
-There are two styles of programming available.  The first of which being an elegant object oriented 
-interface and the second being a namespace polluting function interface.  Personally, I like to 
-pollute my namespace, but an object oriented interface does come in handy at times.
-
-Both the object oriented interface and the function interface have the same functions, just a 
-different context under which to call them with.
-
-At the moment there are several ways to import functions.  The most common being the B<:all> export 
-tag.  This will export the distance(), distance_calc(), and find_closest() functions.  
-You may also export the functions individually, as follows:
-
-  # Export just distance().
-  use Geo::Distance qw( distance );
-  
-  # Export just find_closest().
-  use Geo::Distance qw( find_closest );
-  
-  # Export all functions.
-  use Geo::Distance qw( distance distance_calc find_closest );
-  # or
-  use Geo::Distance qw( :all );
+#-------------------------------------------------------------------------------
+use 5.006;
+use strict;
+use warnings;
+use Carp;
+use Math::Trig qw( great_circle_distance deg2rad rad2deg acos pi );
+our $VERSION = '0.07';
+use constant KILOMETER_RHO => 6371.64;
+#-------------------------------------------------------------------------------
 
 =head1 PROPERTIES
 
 =head2 UNITS
 
-All functions accept a unit type to do the computations of distance with.  There are several 
-of the most common unit types pre-defined.
-
-  kilometer
-  meter
-  centimeter
-  mile
-  yard
-  foot
-  inches
-  light_second
-
-If you want to use a different unit type than is available use the reg_unit() function.
+All functions accept a unit type to do the computations of distance with.  By default no units 
+are defined in a Geo::Distance object.  You can add units with reg_unit() or create some default 
+units with default_units().
 
 =head2 LATITUDE AND LONGITUDE
 
-When a function needs a lon and lat they must always be in decimal format.  If you have a 
-different coordinate system and need to convert head on over to your local CPAN and do a look 
-up for any Geo::Coordinates::* modules.
+When a function needs a lon and lat they must always be in decimal degree format.  Here is some sample 
+code for converting from other formats to decimal:
 
   # DMS to Decimal
   my $decimal = $degrees + ($minutes/60) + ($seconds/3600);
@@ -291,47 +59,199 @@ up for any Geo::Coordinates::* modules.
   # Precision Six Integer to Decimal
   my $decimal = $integer * .000001;
 
+If you want to convert from decimal radians to degrees you can use Math::Trig's rad2deg function.
+
 =head1 METHODS
 
-Currently there are three methods supplied by this module, each with function oriented and object 
-oriented interface.  Whatever the interface, these methods take the same arguments and 
-return the same results.
+=head2 new
 
-=head2 DISTANCE
+  my $geo = new Geo::Distance;
+  my $geo = new Geo::Distance( no_units=>1 );
 
-Takes a name value pairs in a hash style.  All arguments will be validated.  Returns the distance 
-between the two locations in the unit type passed to it.
+Returns a blessed Geo::Distance object.  The new constructor accepts one optional 
+argument.
 
-  my $dist1 = geo_distance( unit=>'meter', lon1=>$lon1, lat1=>$lat1, lon2=>$lon2, lat2=>$lat2 );
-  my $dist2 = $geo->distance( unit=>'mile', lon1=>$lon1, lat1=>$lat1, lon2=>$lon2, lat2=>$lat2 );
+  no_unit - Whether or not to load the default units. Defaults to 0 (false).
+            kilometer, meter, centimeter, yard, foot, inch, light_second, mile
 
-=head2 DISTANCE_CALC
+=cut
 
-This method is used internally by distance() and find_closest() to do the actual distance 
-calculation.  The benefit of using distance_calc() above distance() is that it is faster, 
-it does not verify the input, and does not accept a hash style argument list.
+#-------------------------------------------------------------------------------
+sub new {
+	my $class = shift;
+	my $self = bless {}, $class;
+	my %args = @_;
+	
+	$self->{formula} = 'hsin';
+	$self->{units} = {};
+	if(!$args{no_units}){
+		$self->reg_unit( 'kilometer', KILOMETER_RHO );
+		$self->reg_unit( 'meter' => 1000 => 'kilometer' );
+		$self->reg_unit( 'centimeter' => 100 => 'meter' );
+		$self->reg_unit( 'yard' => 1.0936 => 'meter' );
+		$self->reg_unit( 'foot' => 3 => 'yard' );
+		$self->reg_unit( 'inch' => 12 => 'foot' );
+		$self->reg_unit( 'light_second' => (1/298000) => 'kilometer' );
+		$self->reg_unit( 'mile' => 0.6214 => 'kilometer' );
+		$self->reg_unit( 'nautical mile' => 1.852 => 'kilometer' );
+	}
+	
+	# Number of units in a single degree (lat or lon) at the equator.
+	# Derived from: $geo->distance( 'kilometer', 10,0, 11,0 ) / $geo->{units}->{kilometer}
+	$self->{deg_ratio} = 0.0174532925199433;
 
-This method takes arguments in two forms, as five arguments or as three. The five arguments 
-are unit, lon1, lat1, lon2, and lat2.  See the distance method for a description of these arguments.  
-The three arguments are unit, array_ref1, and array_ref2.  The array_refs are array references each 
-with two entries, the first being lon, and the second being lat.
+	return $self;
+}
+#-------------------------------------------------------------------------------
 
-  my $dist1 = $geo->distance_calc('light_second',$lon1,$lat1,$lon2,$lat2);
-  my $dist2 = distance_calc('inch',$lon1,$lat1,$lon2,$lat2);
+=head2 formula
+
+  if($geo->formula eq 'hsin'){ ... }
+  $geo->formula('cos');
+
+Allows you to retrieve and set the formula that is currently being used to 
+calculate distances.  The availabel formulas are hsin, polar, cos, and mt.  hsin 
+is the default and mt/cos are depreciated in favor of hsin.  polar should be 
+used when calculating coordinates near the poles.
+
+=cut
+
+#-------------------------------------------------------------------------------
+sub formula {
+	my $self = shift;
+	my $formula = shift;
+	if($formula ne 'mt' and $formula ne 'cos' and $formula ne 'hsin' and $formula ne 'polar'){
+		croak('Invalid formula (only gcd, cos, hsin, and polar are supported)');
+	}else{
+		$self->{formula} = $formula;
+	}
+	return $formula;
+}
+#-------------------------------------------------------------------------------
+
+=head2 reg_unit
+
+  # Register 200,120 frog hops to travel the radius of the earth.
+  $geo->reg_unit( 'toad_hop', 200120 );
   
-  my $dist3 = $geo->distance_calc('centimeter',$ary_ref1,$ary_ref2);
-  my $dist4 = distance_calc('foot',$ary_ref1,$ary_ref2);
+  # For every toad hop there are 6 frog hops.
+  $geo->reg_unit( 'frog_hop' => 6 => 'toad_hop' );
 
-=head2 FIND_CLOSEST
+This method is used to create custom unit types.  There are two ways of calling it, 
+depending on if you are defining the unit from scratch, or if you are basing it off 
+of an existing unit (such as saying inches = feet / 12 ).  When defining a unit from 
+scratch you pass the name and rho (radius of the earth in that unit) value.
 
-This method finds the closest locations within a certain distance and returns an array reference of 
-arrays of locations, and optionally an array reference of distances, depending on if you called 
-with a scalar context or array context.
+So, if you wanted to do your calculations in human adult steps you would have to have an 
+average human adult walk from the crust of the earth to the core (ignore the fact that 
+this is impossible).  So, assuming we did this and we came up with 43,200 steps, you'd 
+do something like the following.
 
-  my $locations = $geo->find_closest(...);
-  my ($locations,$distances) = $geo->find_closest(...);
+  # Create adult_step unit.
+  $geo->reg_unit( 'adult_step', 43200 );
 
-The locations to search can be provided as either a database connection or as an array ref.  
+Now, if you also wanted to do distances in baby steps you might think "well, now I 
+gotta get a baby to walk to the center of the earth".  But, you don't have to!  If you do some 
+research you'll find (no research was actually conducted) that there are, on average, 
+4.7 baby steps in each adult step.
+
+  # Create baby_step unit based off adult_step unit.
+  $geo->reg_unit( 'baby_step' => 4.7 => 'adult_step' );
+
+And if we were doing this in reverse and already had the baby step unit but not 
+the adult step...
+
+  # Create adult_step unit based off baby_step unit.
+  $geo->reg_unit( 'adult_step', 1/4.7, 'baby_step' );
+
+=cut
+
+#-------------------------------------------------------------------------------
+sub reg_unit {
+	my $self = shift;
+	my($unit,$amount) = splice(@_,0,2);
+	if(@_){
+		# Make a new unit based off an existing one.
+		my $parent = shift;
+		if(!defined($self->{units}->{$parent})){ croak('The unit "'.$parent.'" is not defined'); }
+		$self->{units}->{$unit} = $self->{units}->{$parent} * $amount;
+	}else{
+		# Make a new unit, or update an existing one.
+		$self->{units}->{$unit} = $amount;
+	}
+	print "REG: $unit ($self->{units}->{$unit})\n";
+}
+#-------------------------------------------------------------------------------
+
+=head2 distance
+
+  my $distance = $geo->distance( 'unit_type', $lon1,$lat1 => $lon2,$lat2 );
+
+Calculates the distance between two lon/lat points.
+
+=cut
+
+#-------------------------------------------------------------------------------
+sub distance {
+	my($self,$unit,$lon1,$lat1,$lon2,$lat2) = @_;
+	croak('Unkown unit type "'.$unit.'"') unless($unit = $self->{units}->{$unit});
+	if($self->{formula} eq 'mt'){
+		return great_circle_distance(
+			deg2rad($lon1), 
+			deg2rad(90 - $lat1), 
+			deg2rad($lon2), 
+			deg2rad(90 - $lat2), 
+			$unit
+		);
+	}else{
+		$lon1 = deg2rad($lon1); $lat1 = deg2rad($lat1);
+		$lon2 = deg2rad($lon2); $lat2 = deg2rad($lat2);
+		my $c;
+		if($self->{formula} eq 'cos'){
+			my $a = sin($lat1) * sin($lat2);
+			my $b = cos($lat1) * cos($lat2) * cos($lon2 - $lon1);
+			$c = acos($a + $b);
+		}
+		elsif($self->{formula} eq 'hsin'){
+			my $dlon = $lon2 - $lon1;
+			my $dlat = $lat2 - $lat1;
+			my $a = (sin($dlat/2)) ** 2 + cos($lat1) * cos($lat2) * (sin($dlon/2)) ** 2;
+			$c = 2 * atan2(sqrt($a), sqrt(1-$a));
+		}
+		elsif($self->{formula} eq 'polar'){
+			my $a = pi/2 - $lat1;
+			my $b = pi/2 - $lat2;
+			$c = sqrt( $a ** 2 + $b ** 2 - 2 * $a * $b * cos($lon2 - $lon1) );
+		}
+		else{
+			croak('Unkown distance formula "'.$self->{formula}.'"');
+		}
+		return $unit * $c;
+	}
+}
+#-------------------------------------------------------------------------------
+
+=head2 closest
+
+This method finds the closest locations within a certain distance and returns an hash reference of 
+locations each with at least it's lon, lat, and the distance.
+
+  my $locations = $geo->closest( $unit, $distance, $lon, $lat, $source, $options);
+
+  $unit - The name of the unit that you want the distances measured by.
+  $distance - The number units out that you want to search.
+  $lon, $lat - The longitutde and latitude.
+  $source - The data source (either a DBI handle or an array ref).
+  $options - A hashref of options.
+    table - The name of the table to search in.
+    fields - Any custom fields to return.
+    lon_field - The name of the longitude field, defaults to "lon".
+    lat_field - The name of the latitude field, defaults to "lat".
+    count - The maximum number of locations to return.
+    sort - A boolean of whether or not to sort the resulting locations 
+           by their distance.  Defaults to 0 (false).
+    where - Any additional SQL where clause that you would like to limit the search by.
+    bind - Bind vars to use with your where clause.
 
 B<DATABASE SEARCH>
 
@@ -341,34 +261,27 @@ this also means that it is B<very> fast.  Once this sub set of locations has bee
 then more precise calculations are made to narrow down the result set.  Remember, though, that 
 the farther out your distance is, and the more locations in the table, the slower your searches will be.
 
-When searching a database you must also provide a table name to search and at least one field to return.  
-The table that you want to search in I<must> have lon and lat fields, both being of the type float.
+When searching a database you must also provide a table name to search and, optionally, one or more fields 
+(seperated by commas) to return.  The table that you want to search in I<must> have lon and lat fields.
 
   # Database connection example.
   my $dbh = DBI->connect(...);
   
   # Find all zip codes within 50 miles of the county Wilbarger, TX, US.
-  my($lon,$lat) = $dbh->selectrow_array(
-    'SELECT lon,lat FROM counties WHERE fips=48487'
-  );
-  my($zips,$distances) = geo_find_closest(
-    lon => $lon,
-    lat => $lat,
-    distance => 50,
-    unit => 'mile',
-    dbh => $dbh,
-    table => 'zipcodes',
-    field => 'id,state'
+  my($lon,$lat) = county_lonlat( fips=>48487 );
+  my $zips = $geo->closest(
+    50 => 'mile' => $lon,$lat,
+    $dbh => { table=>'zipcodes', fields=>'id AS code,state' }
   );
   
   # Internally an SQL select like this is created:
-  #   SELECT lon,lat,id,state FROM counties WHERE ...
+  #   SELECT lon,lat,id,state FROM zipcodes WHERE ...
   
   # Print out each Zip.
-  for(my $i=0; $i<@$zips; $i++){
-  	# @$zips = [lon,lat,id,state]
-  	my $zip = $$zips[$i];
-  	print "The Zip $$zip[2], $$zip[3], ($$zip[0] x $$zip[1]) was $$distances[$i] miles away from $lon x $lat.\n";
+  foreach my $zip (@$zips){
+    print 
+      "The Zip $zip->{code}, $zip->{state}, ($zip->{lon} x $zip->{lat}) was ".
+      int($zip->{distance}*10)/10. " miles away from the county at $lon x $lat.\n";
   }
 
 B<ARRAY REFERENCE SEARCH>
@@ -377,58 +290,138 @@ You may also pass an array reference as the data to search. While not regarded a
 effecient method of finding closest locations, it is still useful at times especially 
 for testing.
 
-  my $locations_db = load_zips();
-  $locations = find_closest(
-    array=>$locations_db,
-    lon=>$lon,
-    lat=>$lat,
-    unit=>'mile',
-    distance=>'50'
+  my $zips_ary = load_zips();
+  my $zips = $geo->closest(
+    50 => 'mile' => $lon,$lat,
+    $zips_ary
   );
 
-B<COUNT ARGUMENT>
+The array should contain a hash ref for each location to search.  Each hash_ref should have a 
+lon field and a lat field.
 
-find_closest() has an optional 'count' field that provides the ability to only retrieve a certain number 
-of locations.
+=cut
 
-  # Retrieve the 5 closest locations.
-  $locations = find_closest(count=>5, ...);
+#-------------------------------------------------------------------------------
+sub closest {
+	my($self,$distance,$unit,$lon,$lat,$source,$options) = @_;
 
-Coincidentally, if you request a zero count (count=>0), you will get all locations as if you didn't specify 
-a count except they will be ordered by distance.
+	# Default options.
+	$options ||= {};
+	$options->{lon_field} ||= 'lon';
+	$options->{lat_field} ||= 'lat';
+	$options->{sort}=1 if($options->{count});
 
-  # Sort locations by their distance.
-  ($locations,$distances) = find_closest(count=>0, ...);
+	# Retrieve locations.
+	my $locations;
+	if(ref($source) eq 'DBI'){
+		my $degrees = $distance / ($self->{deg_ratio}*$unit);
+		$options->{fields} .= ',' if($options->{fields});
+		$options->{fields} .= $options->{lon_field}.','.$options->{lat_field};
+		my $sth = $source->prepare("
+			SELECT $options->{fields} 
+			FROM $options->{table} 
+			WHERE lon>=".($lon-$degrees).' 
+			AND lat>='.($lat-$degrees).' 
+			AND lon<='.($lon+$degrees).' 
+			AND lat<='.($lat+$degrees).
+			( $options->{where} ? "AND ($options->{where})" : '' )
+		);
+		$sth->execute( $options->{bind} || () );
+		$locations = [];
+		while(my $location = $sth->fetchrow_hashref){
+			push @$locations, $location;
+		}
+	}elsif(ref($source) eq 'ARRAY'){
+		$locations = $source;
+	}else{
+		croak('Unkown data source');
+	}
 
-=head2 REG_UNIT
+	# Calculate distances.
+	my $closest = [];
+	foreach my $location (@$locations){
+		$location->{distance} = $self->distance(
+			$unit, $lon, $lat, 
+			$location->{$options->{lon_field}}, 
+			$location->{$options->{lat_field}}
+		);
+		if( $location->{distance} <= $distance ){
+			push @$closest, $location;
+		}
+	}
+	$locations = $closest;
 
-This method is used to create custom unit types.  There are two ways of calling it, 
-depending on if you are defining the unit from scratch, or if you are basing it off 
-of an existing unit (such as saying inches = feet / 12 ).  When defining a unit from 
-scratch you pass the name and rho (radius of the earth in that unit) value.
+	# Sort.
+	if( $options->{sort} ){
+		my $location;
+		for(my $i=@$locations-1; $i>=0; $i--){
+			for(my $j=$i-1; $j>=0; $j--){
+				if($locations->[$i]->{distance} < $locations->[$j]->{distance}){
+					$location = $locations->[$i];
+					$locations->[$i] = $locations->[$j];
+					$locations->[$j] = $location;
+				}
+			}
+		}
+	}
 
-So, if you wanted to do your calculations in human adult steps you would have to have an 
-average human adult walk around the earth at the equator (ignore the fact that if you did 
-this you would first have to make bridges that span the oceans around the earth).  So, 
-assuming we did this and we came up with 43,200 steps to make it all the way around the 
-equator of the earth, you'd do something like the following.
+	# Split for count.
+	if( $options->{count} ){
+		splice @$locations, $options->{count};
+	}
+	
+	return $locations;
+}
+#-------------------------------------------------------------------------------
 
-  # Create adult_step unit.
-  $geo->reg_unit('adult_step',43200);
+=head1 FORMULAS
 
-Now, if you also wanted to do distances in baby steps you might think "well, now I 
-gotta get a baby to walk around the earth".  But, you don't have to!  If you do some 
-research you'll find (no research was actually conducted) that there are, on average, 
-4.7 baby steps in each adult step.
+=head2 hsin: Haversine Formula
 
-  # Create baby_step unit based off adult_step unit.
-  $geo->reg_unit('baby_step',4.7,'adult_step');
+  dlon = lon2 - lon1
+  dlat = lat2 - lat1
+  a = (sin(dlat/2))^2 + cos(lat1) * cos(lat2) * (sin(dlon/2))^2
+  c = 2 * atan2( sqrt(a), sqrt(1-a) )
+  d = R * c 
 
-And if we were doing this in reverse and already had the baby step unit but not 
-the adult step...
+The hsin formula is the new standard formula for Geo::Distance because 
+of it's improved accuracy over the cos formula.
 
-  # Create adult_step unit based off baby_step unit.
-  $geo->reg_unit('adult_step',1/4.7,'baby_step');
+=head2 polar: Polar Coordinate Flat-Earth Formula
+
+  a = pi/2 - lat1
+  b = pi/2 - lat2
+  c = sqrt( a^2 + b^2 - 2 * a * b * cos(lon2 - lon1) )
+  d = R * c 
+
+While implimented, this formula has not been tested much.  If you use it 
+PLEASE share your results with the author!
+
+=head2 cos: Law of Cosines for Spherical Trigonometry
+
+  a = sin(lat1) * sin(lat2)
+  b = cos(lat1) * cos(lat2) * cos(lon2 - lon1)
+  c = arccos(a + b)
+  d = R * c
+
+Although this formula is mathematically exact, it is unreliable for 
+small distances because the inverse cosine is ill-conditioned.
+
+=head2 mt: Math::Trig great_circle_distance
+
+This formula uses Meth::Trig's great_circle_distance function which at this time uses math almost 
+exactly the same as the cos formula.  If you want to use the cos formula you may find 
+that mt will calculate faster (untested assumption).  For some reason mt and cos return 
+slight differences at very close distances. The mt formula has the same drawbacks as the cos formula.
+
+This is the same formula that was previously the only one used by 
+Geo::Distance (ending at version 0.06) and was wrongly called the "gcd" formula.
+
+Math::Trig states that the formula that it uses is:
+
+  lat0 = 90 degrees - phi0
+  lat1 = 90 degrees - phi1
+  d = R * arccos(cos(lat0) * cos(lat1) * cos(lon1 - lon01) + sin(lat0) * sin(lat1))
 
 =head1 TODO
 
@@ -436,48 +429,32 @@ the adult step...
 
 =item *
 
-Need a more accurate way of calculating the distance that does not rely upon Math::Trig.  Will 
-probably be math intensive, so Math::Trig should still remain the default for the sake of speed.
+Test the polar formula.
 
 =item *
 
-Berkely DB would be a nice alternative to DBI and Array find_closest() searching.
+Test the closest() function.  I've modified it since the last version but haven't had a chance to test.
 
 =item *
 
-Array searching by find_closest() needs to do a first pass using the more simplistic outer radius 
-calculation, like it does with a database connection.
+Berkely DB would be a nice alternative to DBI and Array closest() searching.
 
 =item *
 
-A second pass should be done in find_closest before distance calculations are made that does an inner 
-radius simplistic calculation.
+A second pass should be done in closest before distance calculations are made that does an inner 
+radius simplistic calculation to find the locations that are obviously within the distance needed.
+
+=item *
+
+Tests!  We need tests!
 
 =back
 
 =head1 BUGS
 
-None known right now, but by the time you read this, who knows?
-Check http://www.bluefeet.net/perl/modules/geo-distance/ for the latest bugs and 
-enhancements.
+Its probable since several of the parts mentioned in the TODO section have not been tested.
 
-=head1 NOTES
-
-Geo::Distance is currently in its alpha stage.  The interface may, and probably will change, 
-features will be added and removed without notice, and good things will hopefully happen before 
-the bad.  So, until this module reaches beta stage, don't be too peeved if something doesn't 
-work when you upgrade.
-
-Note: The below does not apply if you are useing the hsin formula.
-
-This module relies on Math::Trig (great_circle_distance) for most of its computations.  Math::Trig 
-is a core Perl module.  Be aware that Math::Trig states:
-
-  "The answers may be off by few percentages because of the irregular (slightly aspherical) form of the Earth."
-
-also
-
-  "The formula used for grear circle distances is also somewhat unreliable for small distances (for locations separated less than about five degrees) because it uses arc cosine which is rather ill-conditioned for values close to zero."
+Otherwise, none known right now, but by the time you read this, who knows?
 
 =head1 CHEERS
 
@@ -505,15 +482,23 @@ I<Bryce Nesbitt>
 
 =head1 AUTHOR
 
-Copyright (C) 2003-2004 Aran Clary Deltac (CPAN: BLUEFEET)
+Copyright (C) 2003-2005 Aran Clary Deltac (CPAN: BLUEFEET)
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself. 
 
-Address bug reports and comments to: E<lt>aran@bluefeet.netE<gt>. When sending bug reports, 
+Address bug reports and comments to: E<lt>aran@arandeltac.comE<gt>. When sending bug reports, 
 please provide the version of Geo::Distance, the version of Perl, and the name and version of the 
-operating system you are using.  Patches are welcome if you are brave!
+operating system you are using.  Patches are welcome!
 
 =head1 SEE ALSO
 
 L<Math::Trig> - Inverse and hyperbolic trigonemetric Functions.
+
+L<http://www.census.gov/cgi-bin/geo/gisfaq?Q5.1> - A overview of calculating distances.
+
+=cut
+
+#-------------------------------------------------------------------------------
+
+1;
