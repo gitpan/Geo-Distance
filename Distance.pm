@@ -36,7 +36,7 @@ use strict;
 use warnings;
 use Carp;
 use Math::Trig qw( great_circle_distance deg2rad rad2deg acos pi );
-our $VERSION = '0.07';
+our $VERSION = '0.08';
 use constant KILOMETER_RHO => 6371.64;
 #-------------------------------------------------------------------------------
 
@@ -179,7 +179,6 @@ sub reg_unit {
 		# Make a new unit, or update an existing one.
 		$self->{units}->{$unit} = $amount;
 	}
-	print "REG: $unit ($self->{units}->{$unit})\n";
 }
 #-------------------------------------------------------------------------------
 

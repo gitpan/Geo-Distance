@@ -1,60 +1,61 @@
 Revision history for Perl extension Geo::Distance.
 
-0.07
-  - Intermixed documentation with code so it is easier to keep 
-	  the docs up-to-date.
-	- OO interface only - method interface completely removed.
-	- By default no units are defined.  Call default_units.
-	- Slightly more precise measurement of the base kilometer rho.
-	- Added "nautical mile" unit type.
-	- Reworked the closest() function.
+0.08  Sun Mar 20 2005
+ - Updated the README description.
+ - Removed debug print()s.  Eeek!
 
-0.06  Tue Jun 29 23:31 2004
-  - Optional Haversine formula.
-  - Misc documentation tweaks.
+0.07  Wed Mar 16 2005
+ - Intermixed documentation with code so it is easier to keep 
+   the docs up-to-date.
+ - OO interface only - method interface completely removed.
+ - By default no units are defined.  Call default_units.
+ - Slightly more precise measurement of the base kilometer rho.
+ - Added "nautical mile" unit type.
+ - Reworked the closest() function.
 
-0.05  Wed Mar 19 9:36 2003
-  - Added a note in the documentation about the 
-    inaccuracies of using Math::Trig.
-  - The 'mile' unit was being calculated wrong which 
-    meant it was returning very inaccurate distances.
-  - Fixed a silly bug where a sub was being relied 
-    on that no longer exists.
-  - Documentation tweaks as usual.
+0.06  Tue Jun 29 2004
+ - Optional Haversine formula.
+ - Misc documentation tweaks.
 
-0.04  Tue Feb 18 16:27 2003
-  - Documentation revised once again.
-  - Added reg_unit() for adding your own unit type.
-  - find_closest has been overhauled:
-    - Now accepts more than one field in the 
-      field=>'' parameter.
-    - Will now return an array reference 
-      of distances instead of attaching the 
-      distances to the locations array ref.
-    - A little more effecient.
-    - Now accepts a count argument.
-    - Accepts an array reference for searching. 
-      Mostly good for testing, but who knows?
-  - Removed geo_ portion of names for exported 
-    functions.
-  - Removed some of the input checking.  Just not 
-    necessary.
-  - Enhanced tests.  Now we're actually doing some 
-    real testing.  Need more tests tho.
+0.05  Wed Mar 19 2003
+ - Added a note in the documentation about the 
+   inaccuracies of using Math::Trig.
+ - The 'mile' unit was being calculated wrong which 
+   meant it was returning very inaccurate distances.
+ - Fixed a silly bug where a sub was being relied 
+   on that no longer exists.
+ - Documentation tweaks as usual.
 
-0.03  Sat Feb 15 14:49 2003
-  - Documentation modified.
-  - Added find_closest() which accepts a $dbh for 
-    searching in an SQL database.
-  - distance_dirty() can now accept locations as 
-    array refs.
+0.04  Tue Feb 18 2003
+ - Documentation revised once again.
+ - Added reg_unit() for adding your own unit type.
+ - find_closest has been overhauled:
+   - Now accepts more than one field in the 
+     field=>'' parameter.
+   - Will now return an array reference 
+     of distances instead of attaching the 
+     distances to the locations array ref.
+   - A little more effecient.
+   - Now accepts a count argument.
+   - Accepts an array reference for searching. 
+     Mostly good for testing, but who knows?
+ - Removed geo_ portion of names for exported 
+   functions.
+ - Removed some of the input checking.  Just not 
+   necessary.
+ - Enhanced tests.  Now we're actually doing some 
+   real testing.  Need more tests tho.
 
-0.02  Fri Feb 14 22:10 2003
-  - Based on a suggestion by Jack D. I migrated the code 
-    to use Math::Trig for most of the distance math.
-  - POD documentation written.
-  - Object oriented interface created.
+0.03  Sat Feb 15 2003
+ - Documentation modified.
+ - Added find_closest() which accepts a $dbh for 
+   searching in an SQL database.
+ - distance_dirty() can now accept locations as 
+   array refs.
 
-0.01  Fri Feb 14 17:11 2003
-	- original version; created by h2xs 1.21 with options
-		-AX -n Geo::Distance
+0.02  Fri Feb 14 2003
+ - Based on a suggestion by Jack D. I migrated the code 
+   to use Math::Trig for most of the distance math.
+ - POD documentation written.
+ - Object oriented interface created.
+
