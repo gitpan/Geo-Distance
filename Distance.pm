@@ -25,12 +25,12 @@ calculations.
 
 =head1 STABILITY
 
-This is the first version of Geo::Distance to be considered to have a stable interface.  
-You can now rely on the interface to be backwards compatible to version 0.07 and newer.
+The interface to Geo::Distance is fairly stable nowadays.  If this changes it 
+will be noted here.
 
-=item *
-
-0.09 Changed the behavior of the reg_unit funtcion.
+0.10 - The closest() method has a changed argument syntax and no longer supports array searches.
+0.09 - Changed the behavior of the reg_unit funtcion.
+0.07 - OO only, and other changes all over.
 
 =cut
 
@@ -39,8 +39,8 @@ use 5.006;
 use strict;
 use warnings;
 use Carp;
-use Math::Trig qw( great_circle_distance deg2rad rad2deg acos pi );
-our $VERSION = '0.09';
+use Math::Trig qw( great_circle_distance deg2rad rad2deg acos pi asin );
+our $VERSION = '0.10';
 use constant KILOMETER_RHO => 6371.64;
 #-------------------------------------------------------------------------------
 
@@ -75,11 +75,11 @@ If you want to convert from decimal radians to degrees you can use Math::Trig's 
 Returns a blessed Geo::Distance object.  The new constructor accepts one optional 
 argument.
 
-  no_unit - Whether or not to load the default units. Defaults to 0 (false).
-            kilometer, kilometre, meter, metre, centimeter, centimetre, millimeter, 
-            millimetre, yard, foot, inch, light second, mile, nautical mile, 
-            poppy seed, barleycorn, rod, pole, perch, chain, furlong, league, 
-            fathom
+  no_units - Whether or not to load the default units. Defaults to 0 (false).
+             kilometer, kilometre, meter, metre, centimeter, centimetre, millimeter, 
+             millimetre, yard, foot, inch, light second, mile, nautical mile, 
+             poppy seed, barleycorn, rod, pole, perch, chain, furlong, league, 
+             fathom
 
 =cut
 
@@ -144,7 +144,7 @@ used when calculating coordinates near the poles.
 sub formula {
 	my $self = shift;
 	my $formula = shift;
-	if($formula ne 'mt' and $formula ne 'cos' and $formula ne 'hsin' and $formula ne 'polar'){
+	if($formula ne 'mt' and $formula ne 'cos' and $formula ne 'hsin' and $formula ne 'polar' and $formula ne 'gcd'){
 		croak('Invalid formula (only gcd, cos, hsin, and polar are supported)');
 	}else{
 		$self->{formula} = $formula;
@@ -249,6 +249,24 @@ sub distance {
 			my $b = pi/2 - $lat2;
 			$c = sqrt( $a ** 2 + $b ** 2 - 2 * $a * $b * cos($lon2 - $lon1) );
 		}
+		elsif($self->{formula} eq 'gcd'){
+			$c = 2*asin( sqrt(
+				( sin(($lat1-$lat2)/2) )^2 + 
+				cos($lat1) * cos($lat2) * 
+				( sin(($lon1-$lon2)/2) )^2
+			) );
+
+			# Eric Samuelson recommended this formula.
+			# http://forums.devshed.com/t54655/sc3d021a264676b9b440ea7cbe1f775a1.html
+			# http://williams.best.vwh.net/avform.htm
+			# It seems to produce the same results at the hsin formula, so...
+			
+			#my $dlon = $lon2 - $lon1;
+			#my $dlat = $lat2 - $lat1;
+			#my $a = (sin($dlat / 2)) ** 2
+			#	+ cos($lat1) * cos($lat2) * (sin($dlon / 2)) ** 2;
+			#$c = 2 * atan2(sqrt($a), sqrt(1 - $a));
+		}
 		else{
 			croak('Unkown distance formula "'.$self->{formula}.'"');
 		}
@@ -259,108 +277,85 @@ sub distance {
 
 =head2 closest
 
-This method finds the closest locations within a certain distance and returns an hash reference of 
-locations each with at least it's lon, lat, and the distance.
+  $locations = $geo->closest(
+    dbh => $dbh,
+    table => $table,
+    lon => $lon,
+    lat => $lat,
+    unit => $unit_type,
+    distance => $dist_in_unit
+  );
 
-  my $locations = $geo->closest( $unit, $distance, $lon, $lat, $source, $options);
+This method finds the closest locations within a certain distance and returns an 
+array reference with a hash for each location matched.
 
-  $unit - The name of the unit that you want the distances measured by.
-  $distance - The number units out that you want to search.
-  $lon, $lat - The longitutde and latitude.
-  $source - The data source (either a DBI handle or an array ref).
-  $options - A hashref of options.
-    table - The name of the table to search in.
-    fields - Any custom fields to return.
-    lon_field - The name of the longitude field, defaults to "lon".
-    lat_field - The name of the latitude field, defaults to "lat".
-    count - The maximum number of locations to return.
-    sort - A boolean of whether or not to sort the resulting locations 
-           by their distance.  Defaults to 0 (false).
-    where - Any additional SQL where clause that you would like to limit the search by.
-    bind - Bind vars to use with your where clause.
+The closest method requires the following arguments:
 
-B<DATABASE SEARCH>
+  dbh - a DBI database handle
+  table - a table within dbh that contains the locations to search
+  lon - the longitude of the center point
+  lat - the latitude of the center point
+  unit - the unit of measurement to use, such as "meter"
+  distance - the distance, in units, from the center point to find locations
 
-This method uses some very simplistic calculations to SQL select out of the $dbh.  This 
-means that the SQL should work fine on almost any database (only tested on MySQL so far) and 
-this also means that it is B<very> fast.  Once this sub set of locations has been retrieved 
+The following arguments are optional:
+
+  lon_field - the name of the field in the table that contains the longitude, defaults to "lon"
+  lat_field - the name of the field in the table that contains the latitude, defaults to "lat"
+	fields - an array reference of extra field names that you would like returned with each location
+	where - additional rules for the where clause of the sql
+	bind - an array reference of bind variables to go with the placeholders in where
+	sort - whether to sort the locations by their distance, making the closest location the first returned
+  count - return at most these number of locations (implies sort => 1)
+
+This method uses some very simplistic calculations to SQL select out of the dbh.  This 
+means that the SQL should work fine on almost any database (only tested on MySQL and SQLite so far) and 
+this also means that it is fast.  Once this sub set of locations has been retrieved 
 then more precise calculations are made to narrow down the result set.  Remember, though, that 
 the farther out your distance is, and the more locations in the table, the slower your searches will be.
-
-When searching a database you must also provide a table name to search and, optionally, one or more fields 
-(seperated by commas) to return.  The table that you want to search in I<must> have lon and lat fields.
-
-  # Database connection example.
-  my $dbh = DBI->connect(...);
-  
-  # Find all zip codes within 50 miles of the county Wilbarger, TX, US.
-  my($lon,$lat) = county_lonlat( fips=>48487 );
-  my $zips = $geo->closest(
-    50 => 'mile' => $lon,$lat,
-    $dbh => { table=>'zipcodes', fields=>'id AS code,state' }
-  );
-  
-  # Internally an SQL select like this is created:
-  #   SELECT lon,lat,id,state FROM zipcodes WHERE ...
-  
-  # Print out each Zip.
-  foreach my $zip (@$zips){
-    print 
-      "The Zip $zip->{code}, $zip->{state}, ($zip->{lon} x $zip->{lat}) was ".
-      int($zip->{distance}*10)/10. " miles away from the county at $lon x $lat.\n";
-  }
-
-B<ARRAY REFERENCE SEARCH>
-
-You may also pass an array reference as the data to search. While not regarded as an 
-effecient method of finding closest locations, it is still useful at times especially 
-for testing.
-
-  my $zips_ary = load_zips();
-  my $zips = $geo->closest(
-    50 => 'mile' => $lon,$lat,
-    $zips_ary
-  );
-
-The array should contain a hash ref for each location to search.  Each hash_ref should have a 
-lon field and a lat field.
 
 =cut
 
 #-------------------------------------------------------------------------------
 sub closest {
-	my($self,$distance,$unit,$lon,$lat,$source,$options) = @_;
+	my $self  = shift;
+	my %args = @_;
 
-	# Default options.
-	$options ||= {};
-	$options->{lon_field} ||= 'lon';
-	$options->{lat_field} ||= 'lat';
-	$options->{sort}=1 if($options->{count});
-
+	# Set defaults and prepare.
+	my $dbh = $args{dbh} || croak('You must supply a database handle');
+	$dbh->isa('DBI::db') || croak('The dbh must be a DBI database handle');
+	my $table = $args{table} || croak('You must supply a table name');
+	my $lon = $args{lon} || croak('You must supply a longitude');
+	my $lat = $args{lat} || croak('You must supply a latitude');
+	my $distance = $args{distance} || croak('You must supply a distance');
+	my $unit = $args{unit} || croak('You must specify a unit type');
+	my $unit_size = $self->{units}->{$unit} || croak('This unit type is not known');
+	my $degrees = $distance / ( $self->{deg_ratio} * $unit_size );
+	my $lon_field = $args{lon_field} || 'lon';
+	my $lat_field = $args{lat_field} || 'lat';
+	my $fields = $args{fields} || [];
+	unshift @$fields, $lon_field, $lat_field;
+	$fields = join( ',', @$fields );
+	my $count = $args{count} || 0;
+	my $sort = $args{sort} || ( $count ? 1 : 0 );
+	my $where = q{lon>=? AND lat>=? AND lon<=? AND lat<=?};
+	$where .= ( $args{where} ? " AND ($args{where})" : '' );
+	my @bind = (
+		$lon-$degrees, $lat-$degrees,
+		$lon+$degrees, $lat+$degrees,
+		( $args{bind} ? @{$args{bind}} : () )
+	);
+	
 	# Retrieve locations.
-	my $locations;
-	if(ref($source) eq 'DBI'){
-		my $degrees = $distance / ($self->{deg_ratio}*$unit);
-		$options->{fields} .= ',' if($options->{fields});
-		$options->{fields} .= $options->{lon_field}.','.$options->{lat_field};
-		my $sth = $source->prepare("
-			SELECT $options->{fields} 
-			FROM $options->{table} 
-			WHERE lon>=".($lon-$degrees).' 
-			AND lat>='.($lat-$degrees).' 
-			AND lon<='.($lon+$degrees).' 
-			AND lat<='.($lat+$degrees).
-			( $options->{where} ? "AND ($options->{where})" : '' )
-		);
-		$sth->execute( $options->{bind} || () );
-		$locations = [];
-		while(my $location = $sth->fetchrow_hashref){
-			push @$locations, $location;
-		}
-	}elsif(ref($source) eq 'ARRAY'){
-		$locations = $source;
-	}else{
-		croak('Unkown data source');
+	my $sth = $dbh->prepare(qq{
+		SELECT $fields 
+		FROM $table
+		WHERE $where
+	});
+	$sth->execute( @bind );
+	my $locations = [];
+	while(my $location = $sth->fetchrow_hashref){
+		push @$locations, $location;
 	}
 
 	# Calculate distances.
@@ -368,8 +363,8 @@ sub closest {
 	foreach my $location (@$locations){
 		$location->{distance} = $self->distance(
 			$unit, $lon, $lat, 
-			$location->{$options->{lon_field}}, 
-			$location->{$options->{lat_field}}
+			$location->{$lon_field}, 
+			$location->{$lat_field}
 		);
 		if( $location->{distance} <= $distance ){
 			push @$closest, $location;
@@ -378,7 +373,7 @@ sub closest {
 	$locations = $closest;
 
 	# Sort.
-	if( $options->{sort} ){
+	if( $sort ){
 		my $location;
 		for(my $i=@$locations-1; $i>=0; $i--){
 			for(my $j=$i-1; $j>=0; $j--){
@@ -392,8 +387,8 @@ sub closest {
 	}
 
 	# Split for count.
-	if( $options->{count} ){
-		splice @$locations, $options->{count};
+	if( $count ){
+		splice @$locations, $count;
 	}
 	
 	return $locations;
@@ -402,9 +397,9 @@ sub closest {
 
 =head1 FORMULAS
 
-Currently Geo::Distance only has spherical and flat type formulas.  Work 
-is in progress to add even more accuracy with ellipsoid and geoid 
-formulas.
+Currently Geo::Distance only has spherical and flat type formulas.  
+If you have any information concerning ellipsoid and geoid formulas, 
+the author would much appreciate some links to this information.
 
 =head2 hsin: Haversine Formula
 
@@ -463,24 +458,12 @@ Test the polar formula.
 
 =item *
 
-Test the closest() function.  I've modified it since the last version but haven't had a chance to test.
-
-=item *
-
-Berkely DB would be a nice alternative to DBI and Array closest() searching.
-
-=item *
-
 A second pass should be done in closest before distance calculations are made that does an inner 
 radius simplistic calculation to find the locations that are obviously within the distance needed.
 
 =item *
 
-Tests!  We need tests!
-
-=item *
-
-For more accuracy an ellipsoid formula would be nice.
+Tests!  We need more tests!
 
 =item *
 
@@ -499,6 +482,10 @@ Otherwise, none known right now, but by the time you read this, who knows?
 Thanks!
 
 =over 4
+
+=item *
+
+I<Rhesa Rozendaal>
 
 =item *
 
@@ -534,6 +521,8 @@ operating system you are using.  Patches are welcome!
 L<Math::Trig> - Inverse and hyperbolic trigonemetric Functions.
 
 L<http://www.census.gov/cgi-bin/geo/gisfaq?Q5.1> - A overview of calculating distances.
+
+L<http://williams.best.vwh.net/avform.htm> - Aviation Formulary.
 
 =cut
 
