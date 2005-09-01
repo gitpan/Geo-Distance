@@ -13,7 +13,14 @@ Geo::Distance - Calculate Distances and Closest Locations
   $geo->reg_unit( 'toad_hop', 200120 );
   $geo->reg_unit( 'frog_hop' => 6 => 'toad_hop' );
   my $distance = $geo->distance( 'unit_type', $lon1,$lat1 => $lon2,$lat2 );
-  my $locations = $geo->closest( $unit, $unit_count, $lon, $lat, $source, $options);
+  my $locations = $geo->closest(
+    dbh => $dbh,
+    table => $table,
+    lon => $lon,
+    lat => $lat,
+    unit => $unit_type,
+    distance => $dist_in_unit
+  );
 
 =head1 DESCRIPTION
 
@@ -39,8 +46,8 @@ use 5.006;
 use strict;
 use warnings;
 use Carp;
-use Math::Trig qw( great_circle_distance deg2rad rad2deg acos pi asin );
-our $VERSION = '0.10';
+use Math::Trig qw( great_circle_distance deg2rad rad2deg acos pi asin tan atan );
+our $VERSION = '0.11';
 use constant KILOMETER_RHO => 6371.64;
 #-------------------------------------------------------------------------------
 
@@ -144,8 +151,8 @@ used when calculating coordinates near the poles.
 sub formula {
 	my $self = shift;
 	my $formula = shift;
-	if($formula ne 'mt' and $formula ne 'cos' and $formula ne 'hsin' and $formula ne 'polar' and $formula ne 'gcd'){
-		croak('Invalid formula (only gcd, cos, hsin, and polar are supported)');
+	if( $formula !~ /^(mt|cos|hsin|polar|gcd|tv)$/s ){
+		croak('Invalid formula (only mt, cos, hsin, polar, gcd and tv are supported)');
 	}else{
 		$self->{formula} = $formula;
 	}
@@ -267,6 +274,39 @@ sub distance {
 			#	+ cos($lat1) * cos($lat2) * (sin($dlon / 2)) ** 2;
 			#$c = 2 * atan2(sqrt($a), sqrt(1 - $a));
 		}
+		elsif($self->{formula} eq 'tv'){
+			my($a,$b,$f) = (6378137,6356752.3142,1/298.257223563);
+			my $l = $lon2 - $lon1;
+			my $u1 = atan((1-$f) * tan($lat1));
+			my $u2 = atan((1-$f) * tan($lat2));
+			my $sin_u1 = sin($u1); my $cos_u1 = cos($u1);
+			my $sin_u2 = sin($u2); my $cos_u2 = cos($u2);
+			my $lambda = $l;
+			my $lambda_pi = 2 * pi;
+			my $iter_limit = 20;
+			my($cos_sq_alpha,$sin_sigma,$cos2sigma_m,$cos_sigma,$sigma);
+			while( abs($lambda-$lambda_pi) > 1e-12 && --$iter_limit>0 ){
+				my $sin_lambda = sin($lambda); my $cos_lambda = cos($lambda);
+				$sin_sigma = sqrt(($cos_u2*$sin_lambda) * ($cos_u2*$sin_lambda) + 
+					($cos_u1*$sin_u2-$sin_u1*$cos_u2*$cos_lambda) * ($cos_u1*$sin_u2-$sin_u1*$cos_u2*$cos_lambda));
+				$cos_sigma = $sin_u1*$sin_u2 + $cos_u1*$cos_u2*$cos_lambda;
+				$sigma = atan2($sin_sigma, $cos_sigma);
+				my $alpha = asin($cos_u1 * $cos_u2 * $sin_lambda / $sin_sigma);
+				$cos_sq_alpha = cos($alpha) * cos($alpha);
+				$cos2sigma_m = $cos_sigma - 2*$sin_u1*$sin_u2/$cos_sq_alpha;
+				my $cc = $f/16*$cos_sq_alpha*(4+$f*(4-3*$cos_sq_alpha));
+				$lambda_pi = $lambda;
+				$lambda = $l + (1-$cc) * $f * sin($alpha) *
+					($sigma + $cc*$sin_sigma*($cos2sigma_m+$cc*$cos_sigma*(-1+2*$cos2sigma_m*$cos2sigma_m)));
+			}
+			undef if( $iter_limit==0 );
+			my $usq = $cos_sq_alpha*($a*$a-$b*$b)/($b*$b);
+			my $aa = 1 + $usq/16384*(4096+$usq*(-768+$usq*(320-175*$usq)));
+			my $bb = $usq/1024 * (256+$usq*(-128+$usq*(74-47*$usq)));
+			my $delta_sigma = $bb*$sin_sigma*($cos2sigma_m+$bb/4*($cos_sigma*(-1+2*$cos2sigma_m*$cos2sigma_m)-
+				$bb/6*$cos2sigma_m*(-3+4*$sin_sigma*$sin_sigma)*(-3+4*$cos2sigma_m*$cos2sigma_m)));
+			$c = ( $b*$aa*($sigma-$delta_sigma) ) / $self->{units}->{meter};
+		}
 		else{
 			croak('Unkown distance formula "'.$self->{formula}.'"');
 		}
@@ -277,7 +317,7 @@ sub distance {
 
 =head2 closest
 
-  $locations = $geo->closest(
+  my $locations = $geo->closest(
     dbh => $dbh,
     table => $table,
     lon => $lon,
@@ -302,10 +342,10 @@ The following arguments are optional:
 
   lon_field - the name of the field in the table that contains the longitude, defaults to "lon"
   lat_field - the name of the field in the table that contains the latitude, defaults to "lat"
-	fields - an array reference of extra field names that you would like returned with each location
-	where - additional rules for the where clause of the sql
-	bind - an array reference of bind variables to go with the placeholders in where
-	sort - whether to sort the locations by their distance, making the closest location the first returned
+  fields - an array reference of extra field names that you would like returned with each location
+  where - additional rules for the where clause of the sql
+  bind - an array reference of bind variables to go with the placeholders in where
+  sort - whether to sort the locations by their distance, making the closest location the first returned
   count - return at most these number of locations (implies sort => 1)
 
 This method uses some very simplistic calculations to SQL select out of the dbh.  This 
@@ -334,12 +374,14 @@ sub closest {
 	my $lon_field = $args{lon_field} || 'lon';
 	my $lat_field = $args{lat_field} || 'lat';
 	my $fields = $args{fields} || [];
+	
 	unshift @$fields, $lon_field, $lat_field;
 	$fields = join( ',', @$fields );
 	my $count = $args{count} || 0;
 	my $sort = $args{sort} || ( $count ? 1 : 0 );
-	my $where = q{lon>=? AND lat>=? AND lon<=? AND lat<=?};
+	my $where = qq{$lon_field>=? AND $lat_field>=? AND $lon_field<=? AND $lat_field<=?};
 	$where .= ( $args{where} ? " AND ($args{where})" : '' );
+	
 	my @bind = (
 		$lon-$degrees, $lat-$degrees,
 		$lon+$degrees, $lat+$degrees,
@@ -401,6 +443,15 @@ Currently Geo::Distance only has spherical and flat type formulas.
 If you have any information concerning ellipsoid and geoid formulas, 
 the author would much appreciate some links to this information.
 
+=head2 tv: Thaddeus Vincenty Formula
+
+This is a highly accurate ellipsoid formula.  For most applications 
+hsin will be faster and accurate enough.  I've read that this formula can 
+be accurate to within a few millimeters.
+
+This formula is still considered alpha quality.  It has not been tested 
+enough to be used in production.
+
 =head2 hsin: Haversine Formula
 
   dlon = lon2 - lon1
@@ -432,6 +483,16 @@ PLEASE share your results with the author!
 Although this formula is mathematically exact, it is unreliable for 
 small distances because the inverse cosine is ill-conditioned.
 
+=head2 gcd: Great Circle Distance.
+
+  c = 2 * asin( sqrt(
+    ( sin(( lat1 - lat2 )/2) )^2 + 
+    cos( lat1 ) * cos( lat2 ) * 
+    ( sin(( lon1 - lon2 )/2) )^2
+  ) )
+
+Similar notes to the mt and cos formula, not too terribly accurate.
+
 =head2 mt: Math::Trig great_circle_distance
 
 This formula uses Meth::Trig's great_circle_distance function which at this time uses math almost 
@@ -454,10 +515,6 @@ Math::Trig states that the formula that it uses is:
 
 =item *
 
-Test the polar formula.
-
-=item *
-
 A second pass should be done in closest before distance calculations are made that does an inner 
 radius simplistic calculation to find the locations that are obviously within the distance needed.
 
@@ -469,13 +526,15 @@ Tests!  We need more tests!
 
 For NASA-quality accuracy a geoid forumula.
 
+=item *
+
+The closest() method needs to be more flexible and (among other things) allow table joins.
+
 =back
 
 =head1 BUGS
 
-Its probable since several of the parts mentioned in the TODO section have not been tested.
-
-Otherwise, none known right now, but by the time you read this, who knows?
+Report them to aran@bluefeet.net.
 
 =head1 CHEERS
 
@@ -512,9 +571,8 @@ Copyright (C) 2003-2005 Aran Clary Deltac (CPAN: BLUEFEET)
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself. 
 
-Address bug reports and comments to: E<lt>aran@arandeltac.comE<gt>. When sending bug reports, 
-please provide the version of Geo::Distance, the version of Perl, and the name and version of the 
-operating system you are using.  Patches are welcome!
+Address bug reports and comments to: E<lt>aran@bluefeet.netE<gt>. When sending bug reports, 
+please provide the version of Geo::Distance that you are useing.
 
 =head1 SEE ALSO
 

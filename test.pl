@@ -1,7 +1,3 @@
-#########################
-# TODO: Come up with some 
-# good tests!
-
 use strict;
 use Test::More qw(no_plan);
 use DBI;
@@ -19,7 +15,7 @@ ok( (not($@) and int($dist)==12), 'measure a distance by mile' );
 SKIP: {
 	eval{ require DBD::SQLite };
 	skip "DBD::SQLite not installed" if $@;
-
+	
 	my $dbh = eval{ return DBI->connect( "dbi:SQLite:dbname=test.db", "", "", {AutoCommit => 0} ) };
 	ok( !$@, 'connect/create SQLite test.db' );
 	eval{ load_zips( $dbh ) };
@@ -27,16 +23,16 @@ SKIP: {
 	
 	eval{ $geo->closest( dbh=>$dbh, table=>'zips', lon=>'-80.7881', lat=>'35.22', unit=>'mile', distance=>'5' ) };
 	ok( !$@, 'run closest' );
-
+	
 	my $locations;
-
+	
 	$locations = $geo->closest( dbh=>$dbh, table=>'zips', lon=>'-80.7881', lat=>'35.22', unit=>'mile', distance=>'5' );
 	ok( (@$locations==11), 'found correct number of locations by mile' );
 	$locations = $geo->closest( dbh=>$dbh, table=>'zips', lon=>'-80.8577', lat=>'35.1316', unit=>'kilometer', distance=>'5' );
 	ok( (@$locations==2), 'found correct number of locations by kilometer' );
 	$locations = $geo->closest( dbh=>$dbh, table=>'zips', lon=>'-80.8577', lat=>'35.1316', unit=>'mile', distance=>'5', count=>3 );
 	ok( (@$locations==3), 'found correct number of locations limited by count' );
-
+	
 	$dbh->disconnect;
 	unlink('test.db');
 }
@@ -90,7 +86,7 @@ sub load_zips {
 	$sth->execute("-80.6162","35.4141","28027");
 	$sth->execute("-80.5319","35.2477","28107");
 	$sth->execute("-80.53","35.3716","28025");
-
+	
 	$dbh->commit;
 }
 
