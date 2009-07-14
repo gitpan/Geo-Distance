@@ -30,6 +30,13 @@ there is support for finding the closest locations within a specified distance, 
 closest number of points to a specified point, and to do basic point-to-point distance 
 calculations.
 
+=head1 DECOMMISSIONED
+
+The L<GIS::Distance> module is being worked on as a replacement for this module.  In the
+near future Geo::Distance will become a lightweight wrapper around GIS::Distance so that
+legacy code benefits from fixes to GIS::Distance through the old Geo::Distance API.  For
+any new developement I suggest that you look in to GIS::Distance.
+
 =head1 STABILITY
 
 The interface to Geo::Distance is fairly stable nowadays.  If this changes it 
@@ -47,7 +54,7 @@ use strict;
 use warnings;
 use Carp;
 use Math::Trig qw( great_circle_distance deg2rad rad2deg acos pi asin tan atan );
-our $VERSION = '0.11';
+our $VERSION = '0.12';
 use constant KILOMETER_RHO => 6371.64;
 #-------------------------------------------------------------------------------
 
@@ -437,6 +444,9 @@ sub closest {
 }
 #-------------------------------------------------------------------------------
 
+1;
+__END__
+
 =head1 FORMULAS
 
 Currently Geo::Distance only has spherical and flat type formulas.  
@@ -564,16 +574,6 @@ I<Bryce Nesbitt>
 
 =back
 
-=head1 AUTHOR
-
-Copyright (C) 2003-2005 Aran Clary Deltac (CPAN: BLUEFEET)
-
-This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself. 
-
-Address bug reports and comments to: E<lt>aran@bluefeet.netE<gt>. When sending bug reports, 
-please provide the version of Geo::Distance that you are useing.
-
 =head1 SEE ALSO
 
 L<Math::Trig> - Inverse and hyperbolic trigonemetric Functions.
@@ -582,8 +582,12 @@ L<http://www.census.gov/cgi-bin/geo/gisfaq?Q5.1> - A overview of calculating dis
 
 L<http://williams.best.vwh.net/avform.htm> - Aviation Formulary.
 
-=cut
+=head1 AUTHOR
 
-#-------------------------------------------------------------------------------
+Aran Clary Deltac <bluefeet@cpan.org>
 
-1;
+=head1 LICENSE
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself.
+
