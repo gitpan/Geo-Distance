@@ -54,7 +54,7 @@ use strict;
 use warnings;
 use Carp;
 use Math::Trig qw( great_circle_distance deg2rad rad2deg acos pi asin tan atan );
-our $VERSION = '0.12';
+our $VERSION = '0.13';
 use constant KILOMETER_RHO => 6371.64;
 #-------------------------------------------------------------------------------
 
@@ -444,6 +444,10 @@ sub closest {
 }
 #-------------------------------------------------------------------------------
 
+INIT {
+	eval "use Geo::Distance::XS" unless $ENV{GEO_DISTANCE_PP};
+}
+
 1;
 __END__
 
@@ -519,6 +523,12 @@ Math::Trig states that the formula that it uses is:
   lat1 = 90 degrees - phi1
   d = R * arccos(cos(lat0) * cos(lat1) * cos(lon1 - lon01) + sin(lat0) * sin(lat1))
 
+=head1 NOTES
+
+If L<Geo::Distance::XS> is installed, this module will use it. You can
+stick with the pure Perl version by setting the GEO_DISTANCE_PP environment
+variable before using this module.
+
 =head1 TODO
 
 =over 4
@@ -542,38 +552,6 @@ The closest() method needs to be more flexible and (among other things) allow ta
 
 =back
 
-=head1 BUGS
-
-Report them to aran@bluefeet.net.
-
-=head1 CHEERS
-
-Thanks!
-
-=over 4
-
-=item *
-
-I<Rhesa Rozendaal>
-
-=item *
-
-I<Dean Scott>
-
-=item *
-
-I<Michael R. Meuser>
-
-=item *
-
-I<Jack D.>
-
-=item *
-
-I<Bryce Nesbitt>
-
-=back
-
 =head1 SEE ALSO
 
 L<Math::Trig> - Inverse and hyperbolic trigonemetric Functions.
@@ -585,6 +563,10 @@ L<http://williams.best.vwh.net/avform.htm> - Aviation Formulary.
 =head1 AUTHOR
 
 Aran Clary Deltac <bluefeet@cpan.org>
+
+=head1 CONTRIBUTORS
+
+gray, <gray at cpan.org>
 
 =head1 LICENSE
 
