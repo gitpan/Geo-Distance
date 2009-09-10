@@ -1,5 +1,8 @@
 Revision history for Perl extension Geo::Distance.
 
+0.16
+ - No changes.  The 0.15 package was broken.
+
 0.15
  - Stop "Too late to run INIT block" warning (gray <gray@cpan.org>)
 

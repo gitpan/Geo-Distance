@@ -27,4 +27,4 @@ resources:
   homepage: http://github.com/bluefeet/geo-distance/tree
   license: http://dev.perl.org/licenses/
   repository: git://github.com/bluefeet/geo-distance.git
-version: 0.15
+version: 0.16
