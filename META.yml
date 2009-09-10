@@ -24,5 +24,7 @@ requires:
   Math::Complex: 0
   perl: 5.8.3
 resources:
+  homepage: http://github.com/bluefeet/geo-distance/tree
   license: http://dev.perl.org/licenses/
-version: 0.14
+  repository: git://github.com/bluefeet/geo-distance.git
+version: 0.15

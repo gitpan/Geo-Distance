@@ -54,7 +54,7 @@ use strict;
 use warnings;
 use Carp;
 use Math::Trig qw( great_circle_distance deg2rad rad2deg acos pi asin tan atan );
-our $VERSION = '0.14';
+our $VERSION = '0.15';
 use constant KILOMETER_RHO => 6371.64;
 #-------------------------------------------------------------------------------
 
@@ -444,8 +444,8 @@ sub closest {
 }
 #-------------------------------------------------------------------------------
 
-INIT {
-	eval "use Geo::Distance::XS" unless $ENV{GEO_DISTANCE_PP};
+unless( $ENV{GEO_DISTANCE_PP} ) {
+    eval "use Geo::Distance::XS";
 }
 
 1;
