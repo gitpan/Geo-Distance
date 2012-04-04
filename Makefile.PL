@@ -12,6 +12,7 @@ my %WriteMakefileArgs = (
   "ABSTRACT" => "Calculate Distances and Closest Locations",
   "AUTHOR" => "Aran Deltac <bluefeet\@gmail.com>",
   "BUILD_REQUIRES" => {
+    "Test::Fatal" => "0.007",
     "Test::Simple" => "0.94"
   },
   "CONFIGURE_REQUIRES" => {
@@ -24,7 +25,7 @@ my %WriteMakefileArgs = (
   "PREREQ_PM" => {
     "Math::Complex" => 0
   },
-  "VERSION" => "0.18",
+  "VERSION" => "0.19",
   "test" => {
     "TESTS" => "t/*.t"
   }

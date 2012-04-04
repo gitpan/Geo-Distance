@@ -3,6 +3,7 @@ abstract: 'Calculate Distances and Closest Locations'
 author:
   - 'Aran Deltac <bluefeet@gmail.com>'
 build_requires:
+  Test::Fatal: 0.007
   Test::Simple: 0.94
 configure_requires:
   ExtUtils::MakeMaker: 6.30
@@ -18,4 +19,4 @@ requires:
 resources:
   bugtracker: https://github.com/bluefeet/Geo-Distance/issues
   repository: git://github.com/bluefeet/Geo-Distance.git
-version: 0.18
+version: 0.19

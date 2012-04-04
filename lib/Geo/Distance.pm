@@ -1,6 +1,6 @@
 package Geo::Distance;
 {
-  $Geo::Distance::VERSION = '0.18';
+  $Geo::Distance::VERSION = '0.19';
 }
 use strict;
 use warnings;
@@ -47,7 +47,7 @@ The interface to Geo::Distance is fairly stable nowadays.  If this changes it
 will be noted here.
 
 0.10 - The closest() method has a changed argument syntax and no longer supports array searches.
-0.09 - Changed the behavior of the reg_unit funtcion.
+0.09 - Changed the behavior of the reg_unit function.
 0.07 - OO only, and other changes all over.
 
 =cut
@@ -66,8 +66,8 @@ units with default_units().
 
 =head2 LATITUDE AND LONGITUDE
 
-When a function needs a lon and lat they must always be in decimal degree format.  Here is some sample 
-code for converting from other formats to decimal:
+When a function needs a longitude and latitude, they must always be in decimal degree format.
+Here is some sample code for converting from other formats to decimal:
 
   # DMS to Decimal
   my $decimal = $degrees + ($minutes/60) + ($seconds/3600);
@@ -143,10 +143,10 @@ sub new {
   if($geo->formula eq 'hsin'){ ... }
   $geo->formula('cos');
 
-Allows you to retrieve and set the formula that is currently being used to 
-calculate distances.  The availabel formulas are hsin, polar, cos, and mt.  hsin 
-is the default and mt/cos are deprecated in favor of hsin.  polar should be 
-used when calculating coordinates near the poles.
+Allows you to retrieve and set the formula that is currently being used to
+calculate distances.  The available formulas are hsin, polar, cos and mt. hsin
+is the default and mt/cos are deprecated in favor of hsin. Polar should be used
+when calculating coordinates near the poles.
 
 =cut
 
@@ -247,7 +247,7 @@ sub distance {
             my $dlon = $lon2 - $lon1;
             my $dlat = $lat2 - $lat1;
             my $a = (sin($dlat/2)) ** 2 + cos($lat1) * cos($lat2) * (sin($dlon/2)) ** 2;
-            $c = 2 * atan2(sqrt($a), sqrt(1-$a));
+            $c = 2 * atan2(sqrt($a), sqrt(abs(1-$a)));
         }
         elsif($self->{formula} eq 'polar'){
             my $a = pi/2 - $lat1;

@@ -8,5 +8,6 @@ lib/Geo/Distance.pm
 t/00-compile.t
 t/basic.t
 t/issue-github-2.t
+t/issue-github-3.t
 t/release-pod-coverage.t
 t/release-pod-syntax.t
