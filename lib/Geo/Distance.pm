@@ -1,6 +1,6 @@
 package Geo::Distance;
 {
-  $Geo::Distance::VERSION = '0.19';
+  $Geo::Distance::VERSION = '0.20';
 }
 use strict;
 use warnings;
